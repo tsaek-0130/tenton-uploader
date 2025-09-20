@@ -1,2 +1,3 @@
-dropbox
-playwright
+dropbox==11.36.2
+requests>=2.31.0
+playwright>=1.46.0
