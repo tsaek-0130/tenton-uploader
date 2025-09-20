@@ -2,8 +2,8 @@ name: Tenton Uploader
 
 on:
   schedule:
-    - cron: "0 5 * * *"   # 毎日14:00 JST（UTC 5:00）
-  workflow_dispatch:       # 手動実行も可能
+    - cron: "0 5 * * *"   # 毎日14:00 JST（UTCで5:00）
+  workflow_dispatch:       # 手動実行もできる
 
 jobs:
   run:
