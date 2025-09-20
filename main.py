@@ -24,7 +24,7 @@ LOGIN_URL = "http://8.209.213.176/user/login"
 UPLOAD_URL = "http://8.209.213.176/orderManagement/orderInFo"
 
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=False, slow_mo=500)
+    browser = p.chromium.launch(headless=True)
     page = browser.new_page()
 
     # ログイン
