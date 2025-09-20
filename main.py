@@ -28,7 +28,7 @@ with sync_playwright() as p:
     page = browser.new_page()
 
     # ログイン
-    page.goto(LOGIN_URL)
+    page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=120000)
     page.fill("input[name='username']", USERNAME)   # ← 実際の要素に合わせて修正
     page.fill("input[name='password']", PASSWORD)   # ← 実際の要素に合わせて修正
     page.click("button[type='submit']")             # ← 実際の要素に合わせて修正
