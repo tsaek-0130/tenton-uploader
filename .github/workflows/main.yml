@@ -1,0 +1,29 @@
+name: Tenton Uploader
+
+on:
+  schedule:
+    - cron: "0 5 * * *"   # 毎日14:00 JST（UTC 5:00）
+  workflow_dispatch:       # 手動実行も可能
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Run script
+        env:
+          DROPBOX_TOKEN: ${{ secrets.DROPBOX_TOKEN }}
+          TENTON_USER: ${{ secrets.TENTON_USER }}
+          TENTON_PASS: ${{ secrets.TENTON_PASS }}
+        run: python main.py
