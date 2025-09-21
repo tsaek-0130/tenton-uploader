@@ -48,9 +48,9 @@ with sync_playwright() as p:
 
     # ログイン
     page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=120000)
-    page.fill("input[name='username']", USERNAME)
-    page.fill("input[name='password']", PASSWORD)
-    page.click("button[type='submit']")
+    page.fill("input#username", USERNAME)
+    page.fill("input#password", PASSWORD)
+    page.click("button.login-button")
     page.wait_for_load_state("networkidle")
 
     # アップロード画面へ
