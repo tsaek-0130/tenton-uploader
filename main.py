@@ -1,112 +1,148 @@
 import os
-import sys
-import time
-import json
 import requests
-from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+from playwright.sync_api import sync_playwright
 
-# --------- 設定（環境変数） ---------
-APP_KEY = os.environ.get("DROPBOX_APP_KEY")
-APP_SECRET = os.environ.get("DROPBOX_APP_SECRET")
-REFRESH_TOKEN = os.environ.get("DROPBOX_REFRESH_TOKEN")
-TENTON_USER = os.environ.get("TENTON_USER")
-TENTON_PASS = os.environ.get("TENTON_PASS")
+# ========================
+# Dropbox トークン更新
+# ========================
+APP_KEY = os.environ["DROPBOX_APP_KEY"]
+APP_SECRET = os.environ["DROPBOX_APP_SECRET"]
+REFRESH_TOKEN = os.environ["DROPBOX_REFRESH_TOKEN"]
 
-LOGIN_URL = "http://8.209.213.176/user/login"
-UPLOAD_URL = "http://8.209.213.176/orderManagement/orderInFo"
-FOLDER_PATH = "/tenton"
-FILE_PATH = "latest_report.txt"
-
-# --------- Dropbox: refresh -> access token ---------
-def get_access_token():
-    url = "https://api.dropboxapi.com/oauth2/token"
-    data = {
+resp = requests.post(
+    "https://api.dropboxapi.com/oauth2/token",
+    data={
         "grant_type": "refresh_token",
         "refresh_token": REFRESH_TOKEN,
         "client_id": APP_KEY,
         "client_secret": APP_SECRET,
-    }
-    r = requests.post(url, data=data, timeout=30)
-    r.raise_for_status()
-    return r.json()["access_token"]
+    },
+)
+resp.raise_for_status()
+ACCESS_TOKEN = resp.json()["access_token"]
 
-def download_latest_from_dropbox(access_token, folder_path, out_path):
-    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
-    r = requests.post(
-        "https://api.dropboxapi.com/2/files/list_folder",
-        headers=headers,
-        json={"path": folder_path},
-        timeout=30,
-    )
-    r.raise_for_status()
-    entries = r.json().get("entries", [])
-    latest = sorted(entries, key=lambda e: e["server_modified"], reverse=True)[0]
-    path_lower = latest["path_lower"]
+# ========================
+# Dropbox から最新ファイル取得
+# ========================
+import dropbox
+dbx = dropbox.Dropbox(ACCESS_TOKEN)
 
-    dl_headers = {
-        "Authorization": f"Bearer {access_token}",
-        "Dropbox-API-Arg": json.dumps({"path": path_lower}),
-    }
-    r2 = requests.post("https://content.dropboxapi.com/2/files/download", headers=dl_headers, timeout=60)
-    r2.raise_for_status()
-    with open(out_path, "wb") as f:
-        f.write(r2.content)
-    print(f"Downloaded: {latest.get('name')}")
+folder_path = "/tenton"
+files = dbx.files_list_folder(folder_path).entries
+latest_file = sorted(files, key=lambda f: f.server_modified, reverse=True)[0]
 
-# --------- Playwright helpers ---------
-def safe_click_by_index(page, selector, idx=0, timeout=60000):
-    page.wait_for_selector(selector, timeout=timeout)
-    els = page.query_selector_all(selector)
-    if len(els) <= idx:
-        raise RuntimeError(f"{selector} の index {idx} が見つかりません")
-    els[idx].click()
-    return els[idx]
+FILE_PATH = "latest_report.txt"
+_, res = dbx.files_download(latest_file.path_lower)
+with open(FILE_PATH, "wb") as f:
+    f.write(res.content)
+print(f"Downloaded: {latest_file.name}")
 
+# ========================
+# Tenton ログイン情報
+# ========================
+USERNAME = os.environ["TENTON_USER"]
+PASSWORD = os.environ["TENTON_PASS"]
+LOGIN_URL = "http://8.209.213.176/user/login"
+UPLOAD_URL = "http://8.209.213.176/orderManagement/orderInFo"
+
+# ========================
+# ユーティリティ
+# ========================
 def safe_wait_selector(page, selector, timeout=60000):
     try:
         return page.wait_for_selector(selector, timeout=timeout)
-    except PWTimeout as e:
+    except Exception as e:
+        print(f"FATAL: Timeout waiting for selector '{selector}'")
         raise RuntimeError(f"Timeout waiting for selector '{selector}'") from e
 
-# --------- Main ---------
-def main():
-    token = get_access_token()
-    download_latest_from_dropbox(token, FOLDER_PATH, FILE_PATH)
+def safe_click_by_index(page, selector, index, timeout=60000):
+    elems = page.query_selector_all(selector)
+    if len(elems) <= index:
+        raise RuntimeError(f"Selector {selector} not found at index {index}")
+    elems[index].click()
+    page.wait_for_timeout(500)  # 小休止
 
+# ========================
+# メイン処理
+# ========================
+def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
 
         # ログイン
         page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=180000)
-        page.fill("#username", TENTON_USER)
-        page.fill("#password", TENTON_PASS)
-        safe_click_by_index(page, "button.login-button", 0)
-        safe_wait_selector(page, "span.ant-pro-drop-down", timeout=180000)
+        page.fill("#username", USERNAME)
+        page.fill("#password", PASSWORD)
+        page.click("button.login-button")
+        page.wait_for_load_state("networkidle", timeout=180000)
         print("✅ ログイン成功")
 
-        # 言語切替（2番目の li をクリック = 日本語）
-        safe_click_by_index(page, "span.ant-pro-drop-down", 0)
-        safe_wait_selector(page, "li[role='menuitem']", timeout=60000)
-        safe_click_by_index(page, "li[role='menuitem']", 1)
-        time.sleep(2)
-        print("✅ 言語を日本語に切替")
+        # 言語を日本語に切替
+        try:
+            safe_wait_selector(page, "span.ant-pro-drop-down", timeout=60000)
+            page.click("span.ant-pro-drop-down")
+            items = page.query_selector_all("li[role='menuitem']")
+            if len(items) >= 2:
+                items[1].click()
+                print("✅ 言語を日本語に切替")
+        except Exception as e:
+            print("⚠️ 言語切替失敗:", e)
 
-        # アップロードページ
-        page.goto(UPLOAD_URL)
-        safe_wait_selector(page, "button.ant-btn.ant-btn-primary", timeout=180000)
+        # アップロード画面へ
+        page.goto(UPLOAD_URL, wait_until="domcontentloaded", timeout=180000)
         print("✅ アップロード画面表示確認")
 
         # アップロードモーダルを開く
         safe_click_by_index(page, "button.ant-btn.ant-btn-primary", 0)
         print("✅ アップロードモーダルを開いた")
 
-        # 店舗種類 / 店舗名セレクタを待機
-        safe_wait_selector(page, "div.ant-select-selector", timeout=120000)
-        print("✅ 店舗選択UIを検出")
+        # モーダルが出るまで待機
+        safe_wait_selector(page, ".ant-modal-content", timeout=120000)
+        modal = page.query_selector(".ant-modal-content")
+        if not modal:
+            raise RuntimeError("モーダルが取得できませんでした")
+        print("✅ モーダルを検出")
 
-        # --- 以降の処理（店舗種類→店舗名→ファイル添付→一括確認 etc.） ---
-        # ここは前回のフローと同じ。必要なら次のステップで統合します。
+        # 店舗種類/店舗名を選択
+        selectors = modal.query_selector_all("div.ant-select-selector")
+        if len(selectors) < 2:
+            raise RuntimeError(f"店舗選択セレクタが足りません (found={len(selectors)})")
+        selectors[0].click()
+        safe_wait_selector(page, "div[title='アマゾン']", timeout=60000)
+        page.query_selector("div[title='アマゾン']").click()
+
+        selectors[1].click()
+        safe_wait_selector(page, "div[title='アイプロダクト']", timeout=60000)
+        page.query_selector("div[title='アイプロダクト']").click()
+        print("✅ 店舗種類・店舗名を選択完了")
+
+        # ファイルを選択してアップロード
+        modal.query_selector("input[type='file']").set_input_files(FILE_PATH)
+        print("✅ ファイル添付完了")
+
+        # モーダル内の「アップロード」ボタンを押す
+        buttons = modal.query_selector_all("button.ant-btn.ant-btn-primary")
+        if buttons:
+            buttons[-1].click()
+            print("✅ モーダル内アップロード実行")
+
+        # 一覧反映を待機
+        safe_wait_selector(page, "input[type='checkbox']", timeout=180000)
+
+        # 一括確認
+        page.click("input[type='checkbox']")  # 全選択
+        page.click("a.ant-btn.ant-btn-primary")  # 一括確認ボタン
+        page.click("button.ant-btn-primary.ant-btn-sm")  # 確認ボタン
+        print("✅ 一括確認を実行")
+
+        # エラーチェック
+        try:
+            error_dialog = page.wait_for_selector(".ant-modal-body", timeout=5000)
+            if error_dialog:
+                print("エラー内容:", error_dialog.inner_text())
+        except:
+            print("エラーなし、正常に完了しました。")
 
         browser.close()
 
