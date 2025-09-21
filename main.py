@@ -12,7 +12,7 @@ APP_SECRET = os.environ["DROPBOX_APP_SECRET"]
 REFRESH_TOKEN = os.environ["DROPBOX_REFRESH_TOKEN"]
 USERNAME = os.environ["TENTON_USER"]
 PASSWORD = os.environ["TENTON_PASS"]
-DROPBOX_PATH = "/to_tenton"   # Dropbox 監視フォルダ
+DROPBOX_PATH = "/tenton"   # Dropbox 監視フォルダ
 
 # -----------------------------
 # Dropbox アクセストークン取得
