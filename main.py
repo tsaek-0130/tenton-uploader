@@ -3,28 +3,27 @@ import requests
 import dropbox
 from playwright.sync_api import sync_playwright
 
-# ===== Dropbox アクセストークン更新 =====
+# ===== Dropbox トークンリフレッシュ =====
 APP_KEY = os.environ["DROPBOX_APP_KEY"]
 APP_SECRET = os.environ["DROPBOX_APP_SECRET"]
 REFRESH_TOKEN = os.environ["DROPBOX_REFRESH_TOKEN"]
 
 def refresh_access_token():
-    resp = requests.post(
-        "https://api.dropboxapi.com/oauth2/token",
-        data={
-            "grant_type": "refresh_token",
-            "refresh_token": REFRESH_TOKEN,
-            "client_id": APP_KEY,
-            "client_secret": APP_SECRET,
-        },
-    )
-    resp.raise_for_status()
-    return resp.json()["access_token"]
+    url = "https://api.dropboxapi.com/oauth2/token"
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token": REFRESH_TOKEN,
+        "client_id": APP_KEY,
+        "client_secret": APP_SECRET,
+    }
+    r = requests.post(url, data=data)
+    r.raise_for_status()
+    return r.json()["access_token"]
 
-DBX_TOKEN = refresh_access_token()
-dbx = dropbox.Dropbox(DBX_TOKEN)
+ACCESS_TOKEN = refresh_access_token()
+dbx = dropbox.Dropbox(ACCESS_TOKEN)
 
-# ===== 最新ファイル取得 =====
+# ===== Dropbox から最新ファイル取得 =====
 folder_path = "/tenton"
 files = dbx.files_list_folder(folder_path).entries
 latest_file = sorted(files, key=lambda f: f.server_modified, reverse=True)[0]
@@ -35,7 +34,7 @@ with open(FILE_PATH, "wb") as f:
     f.write(res.content)
 print(f"Downloaded: {latest_file.name}")
 
-# ===== テントンにアップロード =====
+# ===== テントンへアップロード =====
 USERNAME = os.environ["TENTON_USER"]
 PASSWORD = os.environ["TENTON_PASS"]
 LOGIN_URL = "http://8.209.213.176/user/login"
@@ -49,33 +48,46 @@ with sync_playwright() as p:
     page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=120000)
     page.fill("#username", USERNAME)
     page.fill("#password", PASSWORD)
-    page.click("button.login-button")
+    page.click("button.login-button")  # class 固定
     page.wait_for_load_state("networkidle")
 
-    # === 言語を日本語に切り替え ===
+    # UI 言語を日本語に統一（安定のため）
     try:
-        page.wait_for_selector("span.ant-pro-drop-down", timeout=10000)
+        page.wait_for_selector("span.ant-pro-drop-down", timeout=60000)
         page.click("span.ant-pro-drop-down")
-        page.get_by_text("日语 日本語", exact=True).click()
-        page.wait_for_timeout(2000)
-        print("日本語に切り替え完了")
+        # ドロップダウン → 常に 2 番目の option をクリック（日本語）
+        page.wait_for_selector("li[role='menuitem']", timeout=60000)
+        items = page.query_selector_all("li[role='menuitem']")
+        if len(items) >= 2:
+            items[1].click()
+        print("✅ UI を日本語に切り替えました")
     except Exception as e:
-        print("言語切替スキップ:", e)
+        print("⚠️ 言語切り替えに失敗しました:", e)
 
     # アップロード画面へ
     page.goto(UPLOAD_URL)
     page.wait_for_load_state("networkidle")
 
-    # 「アップロード」モーダルを開く
-    page.click("button:has-text('アップロード')")
+    # 「アップロード」ボタン → 最初の .ant-btn-primary を押す
+    page.wait_for_selector("button.ant-btn.ant-btn-primary", timeout=60000)
+    buttons = page.query_selector_all("button.ant-btn.ant-btn-primary")
+    if buttons:
+        buttons[0].click()
+
+    # ファイル選択
     page.set_input_files("input[type='file']", FILE_PATH)
-    page.click("button.ant-btn.ant-btn-primary:has-text('アップロード')")
+
+    # モーダルの「アップロード」ボタン → 2 番目の .ant-btn-primary を押す
+    page.wait_for_selector("button.ant-btn.ant-btn-primary", timeout=60000)
+    buttons = page.query_selector_all("button.ant-btn.ant-btn-primary")
+    if len(buttons) > 1:
+        buttons[1].click()
 
     # 一括確認
     page.wait_for_selector("input[type='checkbox']", timeout=60000)
     page.click("input[type='checkbox']")  # 全選択
-    page.click("a.ant-btn.ant-btn-primary:has-text('一括確認')")
-    page.click("button.ant-btn.ant-btn-primary.ant-btn-sm:has-text('確 認')")
+    page.click("a.ant-btn.ant-btn-primary")  # 一括確認ボタン
+    page.click("button.ant-btn.ant-btn-primary.ant-btn-sm")  # 確認ボタン
 
     # エラーチェック
     try:
