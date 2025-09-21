@@ -1,35 +1,34 @@
 import os
-import dropbox
 import requests
+import dropbox
 from playwright.sync_api import sync_playwright
 
-# ===== Dropboxトークン更新 =====
+# ===== Dropbox アクセストークン更新 =====
 APP_KEY = os.environ["DROPBOX_APP_KEY"]
 APP_SECRET = os.environ["DROPBOX_APP_SECRET"]
 REFRESH_TOKEN = os.environ["DROPBOX_REFRESH_TOKEN"]
 
-def get_access_token():
-    url = "https://api.dropboxapi.com/oauth2/token"
-    data = {
-        "grant_type": "refresh_token",
-        "refresh_token": REFRESH_TOKEN,
-        "client_id": APP_KEY,
-        "client_secret": APP_SECRET,
-    }
-    r = requests.post(url, data=data)
-    r.raise_for_status()
-    return r.json()["access_token"]
+def refresh_access_token():
+    resp = requests.post(
+        "https://api.dropboxapi.com/oauth2/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": REFRESH_TOKEN,
+            "client_id": APP_KEY,
+            "client_secret": APP_SECRET,
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()["access_token"]
 
-ACCESS_TOKEN = get_access_token()
+DBX_TOKEN = refresh_access_token()
+dbx = dropbox.Dropbox(DBX_TOKEN)
 
-# ===== Dropboxから取得 =====
-dbx = dropbox.Dropbox(ACCESS_TOKEN)
-
+# ===== 最新ファイル取得 =====
 folder_path = "/tenton"
 files = dbx.files_list_folder(folder_path).entries
 latest_file = sorted(files, key=lambda f: f.server_modified, reverse=True)[0]
 
-# 保存ファイル名を固定
 FILE_PATH = "latest_report.txt"
 _, res = dbx.files_download(latest_file.path_lower)
 with open(FILE_PATH, "wb") as f:
@@ -48,24 +47,32 @@ with sync_playwright() as p:
 
     # ログイン
     page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=120000)
-    page.fill("input#username", USERNAME)
-    page.fill("input#password", PASSWORD)
+    page.fill("#username", USERNAME)
+    page.fill("#password", PASSWORD)
     page.click("button.login-button")
     page.wait_for_load_state("networkidle")
 
+    # === 言語を日本語に切り替え ===
+    try:
+        page.wait_for_selector("span.ant-pro-drop-down", timeout=10000)
+        page.click("span.ant-pro-drop-down")
+        page.get_by_text("日语 日本語", exact=True).click()
+        page.wait_for_timeout(2000)
+        print("日本語に切り替え完了")
+    except Exception as e:
+        print("言語切替スキップ:", e)
+
     # アップロード画面へ
-    page.goto(UPLOAD_URL, wait_until="networkidle", timeout=120000)
+    page.goto(UPLOAD_URL)
+    page.wait_for_load_state("networkidle")
 
-    # 「アップロード」ボタンが出るまで待ってクリック
-    page.wait_for_selector("button.ant-btn:has-text('アップロード')", timeout=60000)
-    page.click("button.ant-btn:has-text('アップロード')")
-
-    # ファイル選択 → アップロード確定
+    # 「アップロード」モーダルを開く
+    page.click("button:has-text('アップロード')")
     page.set_input_files("input[type='file']", FILE_PATH)
     page.click("button.ant-btn.ant-btn-primary:has-text('アップロード')")
 
-    # 一括確認処理
-    page.wait_for_selector("input[type='checkbox']", timeout=30000)
+    # 一括確認
+    page.wait_for_selector("input[type='checkbox']", timeout=60000)
     page.click("input[type='checkbox']")  # 全選択
     page.click("a.ant-btn.ant-btn-primary:has-text('一括確認')")
     page.click("button.ant-btn.ant-btn-primary.ant-btn-sm:has-text('確 認')")
