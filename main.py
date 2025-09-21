@@ -1,31 +1,32 @@
 import os
-import requests
 import dropbox
+import requests
 from playwright.sync_api import sync_playwright
 
-# ===== Dropbox から最新ファイルを取得 =====
-DROPBOX_APP_KEY = os.environ["DROPBOX_APP_KEY"]
-DROPBOX_APP_SECRET = os.environ["DROPBOX_APP_SECRET"]
-DROPBOX_REFRESH_TOKEN = os.environ["DROPBOX_REFRESH_TOKEN"]
-DROPBOX_PATH = "/tenton"   # ← 固定
+# ===== Dropboxから最新ファイルを取得 =====
+APP_KEY = os.environ["DROPBOX_APP_KEY"]
+APP_SECRET = os.environ["DROPBOX_APP_SECRET"]
+REFRESH_TOKEN = os.environ["DROPBOX_REFRESH_TOKEN"]
 
-def get_dropbox_access_token():
-    url = "https://api.dropboxapi.com/oauth2/token"
-    data = {
-        "grant_type": "refresh_token",
-        "refresh_token": DROPBOX_REFRESH_TOKEN,
-        "client_id": DROPBOX_APP_KEY,
-        "client_secret": DROPBOX_APP_SECRET,
-    }
-    res = requests.post(url, data=data)
-    res.raise_for_status()
-    return res.json()["access_token"]
+def refresh_access_token():
+    resp = requests.post(
+        "https://api.dropboxapi.com/oauth2/token",
+        data={
+            "grant_type": "refresh_token",
+            "refresh_token": REFRESH_TOKEN,
+            "client_id": APP_KEY,
+            "client_secret": APP_SECRET,
+        },
+    )
+    resp.raise_for_status()
+    return resp.json()["access_token"]
 
 def download_latest_file():
-    token = get_dropbox_access_token()
+    token = refresh_access_token()
     dbx = dropbox.Dropbox(token)
 
-    entries = dbx.files_list_folder(DROPBOX_PATH).entries
+    folder_path = "/tenton"  # ←ここ固定
+    entries = dbx.files_list_folder(folder_path).entries
     latest_file = sorted(entries, key=lambda f: f.server_modified, reverse=True)[0]
 
     FILE_PATH = "latest_report.txt"
@@ -42,16 +43,19 @@ def safe_wait_selector(page, selector, timeout=60000):
     except Exception as e:
         raise RuntimeError(f"FATAL: Timeout waiting for selector '{selector}'") from e
 
-def safe_click_by_index(page, selector, index=0, timeout=60000):
+def safe_click_by_index(page, selector, index, timeout=60000):
     safe_wait_selector(page, selector, timeout)
     elems = page.query_selector_all(selector)
-    if len(elems) > index:
+    if index < len(elems):
         elems[index].click()
-        return
-    raise RuntimeError(f"Selector {selector} not found at index {index}")
+    else:
+        raise RuntimeError(f"Selector {selector} not found at index {index}")
 
-def select_dropdown_option(page, dropdown_index: int, option_text: str):
-    """Ant Design のドロップダウンを index で開いて、指定の option を選択"""
+def select_dropdown_option(page, dropdown_index: int, option_texts):
+    """
+    Ant Design のドロップダウンを index で開いて、候補リストのいずれかを選択
+    option_texts: list[str]
+    """
     safe_click_by_index(page, "div.ant-select-selection", dropdown_index, timeout=60000)
 
     try:
@@ -61,16 +65,17 @@ def select_dropdown_option(page, dropdown_index: int, option_text: str):
         safe_wait_selector(page, "ul li", timeout=5000)
         options = page.query_selector_all("ul li")
 
+    all_txt = []
     for opt in options:
         txt = opt.inner_text().strip().replace(" ", "").replace("\n", "")
-        if option_text in txt:   # 部分一致で判定
-            opt.click()
-            print(f"✅ ドロップダウン {dropdown_index} で '{option_text}' を選択 ({txt})")
-            return
+        all_txt.append(txt)
+        for opt_text in option_texts:
+            if opt_text in txt:  # 部分一致
+                opt.click()
+                print(f"✅ ドロップダウン {dropdown_index} で '{opt_text}' を選択 ({txt})")
+                return
 
-    # 候補を全部ログに出力
-    all_txt = [opt.inner_text().strip() for opt in options]
-    raise RuntimeError(f"'{option_text}' が見つかりませんでした. 候補={all_txt}")
+    raise RuntimeError(f"候補 {option_texts} が見つかりませんでした. 実際の候補={all_txt}")
 
 # ===== メイン処理 =====
 def main():
@@ -89,50 +94,49 @@ def main():
         page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=120000)
         page.fill("#username", USERNAME)
         page.fill("#password", PASSWORD)
-        page.click("button[type='submit']")
-        page.wait_for_load_state("networkidle", timeout=180000)
+        page.click("button.login-button")
+        page.wait_for_load_state("networkidle")
         print("✅ ログイン成功")
 
-        # 言語を日本語に統一（必ず index=1 を選択）
+        # 言語切替（インデックスで2番目 → 日本語）
         try:
-            safe_click_by_index(page, "span.ant-pro-drop-down", 0)
+            page.click("span.ant-pro-drop-down")
+            safe_wait_selector(page, "li[role='menuitem']", timeout=60000)
             items = page.query_selector_all("li[role='menuitem']")
             if len(items) >= 2:
                 items[1].click()
-                print("✅ 言語を日本語に切替")
+            print("✅ 言語を日本語に切替")
         except Exception as e:
-            print("⚠️ 言語切替失敗:", e)
+            print(f"⚠️ 言語切替に失敗: {e}（続行）")
 
         # アップロード画面へ
-        page.goto(UPLOAD_URL, wait_until="networkidle", timeout=180000)
+        page.goto(UPLOAD_URL, timeout=180000)
+        page.wait_for_load_state("networkidle")
         print("✅ アップロード画面表示確認")
 
-        # アップロードボタン押下
-        safe_click_by_index(page, "button.ant-btn.ant-btn-primary", 0)
+        # 店舗種類・店舗名を指定
+        select_dropdown_option(page, 0, ["アマゾン", "亚马逊"])
+        select_dropdown_option(page, 1, ["アイプロダクト"])
 
-        # ドロップダウン選択
-        select_dropdown_option(page, 0, "アマゾン")
-        select_dropdown_option(page, 1, "アイプロダクト")
-
-        # ファイル選択 & モーダルのアップロード実行
-        safe_wait_selector(page, "input[type='file']", timeout=60000)
+        # アップロード処理
+        safe_click_by_index(page, "button.ant-btn", 0)  # 最初のアップロードボタン
         page.set_input_files("input[type='file']", FILE_PATH)
-        safe_click_by_index(page, "button.ant-btn.ant-btn-primary", 1)
-        print("✅ ファイルをアップロード")
+        page.click("button.ant-btn-primary:has-text('アップロード')")
+        print("✅ ファイルアップロード完了")
 
-        # 一覧に反映 → 全選択 → 一括確認
-        safe_wait_selector(page, "input[type='checkbox']", timeout=120000)
-        page.click("input[type='checkbox']")
-        safe_click_by_index(page, "a.ant-btn.ant-btn-primary", 0)
-        safe_click_by_index(page, "button.ant-btn.ant-btn-primary.ant-btn-sm", 0)
-        print("✅ 一括確認完了")
+        # 一括確認
+        safe_wait_selector(page, "input[type='checkbox']", timeout=60000)
+        page.click("input[type='checkbox']")  # 全選択
+        page.click("a.ant-btn-primary")       # 一括確認
+        page.click("button.ant-btn-primary.ant-btn-sm")  # 確認
+        print("✅ 一括確認処理完了")
 
-        # エラーメッセージ確認
+        # エラーチェック
         try:
             error_dialog = page.wait_for_selector(".ant-modal-body", timeout=5000)
             print("❌ エラー内容:", error_dialog.inner_text())
         except:
-            print("✅ エラーなし、正常に完了しました")
+            print("✅ エラーなし、正常に完了しました。")
 
         browser.close()
 
