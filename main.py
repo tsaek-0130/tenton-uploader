@@ -1,124 +1,129 @@
 import os
-import time
 import dropbox
+import requests
 from playwright.sync_api import sync_playwright
 
-# ===== Dropbox 設定 =====
-DROPBOX_APP_KEY = os.getenv("DROPBOX_APP_KEY")
-DROPBOX_APP_SECRET = os.getenv("DROPBOX_APP_SECRET")
-DROPBOX_REFRESH_TOKEN = os.getenv("DROPBOX_REFRESH_TOKEN")
+# ==============================
+# Dropbox から最新ファイルを取得
+# ==============================
 DROPBOX_PATH = "/tenton"
 
-# ===== Tenton ログイン情報 =====
-TENTON_USER = os.getenv("TENTON_USER")
-TENTON_PASS = os.getenv("TENTON_PASS")
+def refresh_access_token():
+    url = "https://api.dropboxapi.com/oauth2/token"
+    data = {
+        "grant_type": "refresh_token",
+        "refresh_token": os.environ["DROPBOX_REFRESH_TOKEN"],
+        "client_id": os.environ["DROPBOX_APP_KEY"],
+        "client_secret": os.environ["DROPBOX_APP_SECRET"],
+    }
+    r = requests.post(url, data=data)
+    r.raise_for_status()
+    return r.json()["access_token"]
 
-# ===== 共通ヘルパー =====
+def download_latest_file():
+    access_token = refresh_access_token()
+    dbx = dropbox.Dropbox(oauth2_access_token=access_token)
+    entries = dbx.files_list_folder(DROPBOX_PATH).entries
+    latest = max(entries, key=lambda e: e.server_modified)
+    _, res = dbx.files_download(latest.path_lower)
+    fname = f"Downloaded: {latest.name}"
+    with open(fname, "wb") as f:
+        f.write(res.content)
+    print(fname)
+    return os.path.abspath(fname)
+
+# ==============================
+# Playwright ユーティリティ
+# ==============================
 def safe_wait_selector(page, selector, timeout=60000):
     try:
         return page.wait_for_selector(selector, timeout=timeout)
     except Exception as e:
         raise RuntimeError(f"FATAL: Timeout waiting for selector '{selector}'") from e
 
+def safe_click_by_index(page, selector, index, timeout=60000):
+    safe_wait_selector(page, selector, timeout)
+    elems = page.query_selector_all(selector)
+    if not elems:
+        raise RuntimeError(f"{selector} が見つかりません")
+    # index が負なら後ろから数える
+    target = elems[index] if index >= 0 else elems[index]
+    target.click()
 
-def download_latest_file():
-    dbx = dropbox.Dropbox(
-        oauth2_refresh_token=DROPBOX_REFRESH_TOKEN,
-        app_key=DROPBOX_APP_KEY,
-        app_secret=DROPBOX_APP_SECRET,
-    )
-    entries = dbx.files_list_folder(DROPBOX_PATH).entries
-    latest = max(entries, key=lambda e: e.server_modified)
-    _, res = dbx.files_download(latest.path_lower)
-    file_path = latest.name
-    with open(file_path, "wb") as f:
-        f.write(res.content)
-    print(f"Downloaded: {file_path}")
-    return file_path
-
-
-def login_and_open_upload_page():
-    playwright = sync_playwright().start()
-    browser = playwright.chromium.launch(headless=True)
-    page = browser.new_page()
-
-    # ログインページへ
-    page.goto("http://8.209.213.176/login")
-    page.fill("input[placeholder='アカウント']", TENTON_USER)
-    page.fill("input[placeholder='パスワード']", TENTON_PASS)
-    page.click("button:has-text('ログイン')")
-    print("✅ ログイン成功")
-
-    # 言語切替（日本語）
-    try:
-        page.click("span:has-text('日本語')")
-        print("✅ 言語を日本語に切替")
-    except:
-        print("⚠ 日本語切替スキップ")
-
-    # アップロード画面へ遷移
-    page.goto("http://8.209.213.176/orderManagement/orderInFo")
-    safe_wait_selector(page, "text=アップロード")
-    print("✅ アップロード画面表示確認")
-
-    return page
-
-
-# ===== ドロップダウン選択 =====
 def select_dropdown_by_index(page, dropdown_index, option_index):
+    """indexベースで選択する。文字列は一切使わない"""
     dropdowns = page.query_selector_all("div.ant-select")
-    if dropdown_index >= len(dropdowns):
-        raise RuntimeError(f"ドロップダウン {dropdown_index} が見つかりません")
+    if len(dropdowns) <= dropdown_index:
+        raise RuntimeError(f"ドロップダウン index={dropdown_index} が見つかりません")
     dropdowns[dropdown_index].click()
-    page.wait_for_selector("li[role='option']")
+    safe_wait_selector(page, "li[role='option']")
     options = page.query_selector_all("li[role='option']")
-    if option_index >= len(options):
-        raise RuntimeError(f"選択肢 {option_index} が存在しません (候補数={len(options)})")
-    option_text = options[option_index].inner_text()
+    if len(options) <= option_index:
+        raise RuntimeError(f"ドロップダウン{dropdown_index} に option {option_index} がありません (len={len(options)})")
     options[option_index].click()
-    print(f"✅ ドロップダウン {dropdown_index} → '{option_text}' を選択")
+    print(f"✅ ドロップダウン{dropdown_index} → option[{option_index}] を選択")
 
-
-# ===== アップロード処理 =====
-def upload_and_confirm(page, file_path):
-    # ① 店舗種類 = アマゾン
-    select_dropdown_by_index(page, 0, 0)
-
-    # ② 店舗名 = アイプロダクト
-    select_dropdown_by_index(page, 1, 0)
-
-    # ③ 上传（アップロード）ボタンをクリック
-    page.click("button:has-text('上传')")
-    print("✅ 上传ボタンをクリック")
-
-    # ④ input[type=file] にファイル添付
-    safe_wait_selector(page, "input[type='file']")
-    page.set_input_files("input[type='file']", file_path)
-    print(f"✅ ファイル添付 {file_path}")
-
-    # ⑤ 导入ボタンをクリック
-    page.click("button:has-text('导 入')")
-    print("✅ 导入ボタンをクリック")
-
-    # ⑥ 一覧反映待ち
-    page.wait_for_timeout(3000)
-    print("✅ 一覧への反映確認")
-
-    # ⑦ 一括確認
-    page.click("button:has-text('一括確認')")
-    print("✅ 一括確認ボタンをクリック")
-
-    # ⑧ 确认
-    page.click("button:has-text('确认')")
-    print("✅ 确认ボタンをクリック")
-
-
-# ===== メイン =====
+# ==============================
+# メイン処理
+# ==============================
 def main():
-    file_path = download_latest_file()
-    page = login_and_open_upload_page()
-    upload_and_confirm(page, file_path)
+    FILE_PATH = download_latest_file()
+    USERNAME = os.environ["TENTON_USER"]
+    PASSWORD = os.environ["TENTON_PASS"]
 
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+
+        # ログイン
+        page.goto("http://8.209.213.176/login")
+        page.fill("#username", USERNAME)
+        page.fill("#password", PASSWORD)
+        page.click("button.login-button")
+        page.wait_for_load_state("networkidle", timeout=180000)
+        print("✅ ログイン成功")
+
+        # 言語を日本語に統一
+        try:
+            page.click("span.ant-pro-drop-down")
+            safe_wait_selector(page, "li[role='menuitem']")
+            items = page.query_selector_all("li[role='menuitem']")
+            if len(items) >= 2:
+                items[1].click()
+            print("✅ 言語を日本語に切替")
+        except Exception as e:
+            print("⚠️ 言語切替失敗:", e)
+
+        # アップロードモーダルを開く
+        safe_click_by_index(page, "button.ant-btn-primary", 0)  # 上部の「アップロード」
+        print("✅ アップロード画面表示確認")
+
+        # 店舗種類・店舗名を index 指定で選択
+        select_dropdown_by_index(page, 0, 0)  # 例: 店舗種類 → 最初の選択肢 (アマゾン想定)
+        select_dropdown_by_index(page, 1, 0)  # 例: 店舗名 → 最初の選択肢 (アイプロダクト想定)
+
+        # 上传ボタンをクリック（モーダル内の最初の青いボタン）
+        safe_click_by_index(page, "button.ant-btn-primary", 0)
+
+        # ファイル添付
+        safe_wait_selector(page, "input[type='file']")
+        page.set_input_files("input[type='file']", FILE_PATH)
+        print("✅ ファイル添付完了")
+
+        # 导入ボタン（最後の青いボタン）
+        safe_click_by_index(page, "button.ant-btn-primary", -1)
+        print("✅ 导入実行")
+
+        # 一覧反映を待機
+        page.wait_for_timeout(10000)
+
+        # 一括確認 → 确认
+        safe_click_by_index(page, "input[type='checkbox']", 0)   # 一番上のチェックボックス
+        safe_click_by_index(page, "button.ant-btn", 0)           # 一括確認
+        safe_click_by_index(page, "button.ant-btn-primary", -1)  # 确认
+        print("✅ 一括確認完了")
+
+        browser.close()
 
 if __name__ == "__main__":
     main()
