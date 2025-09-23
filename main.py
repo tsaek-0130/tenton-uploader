@@ -44,24 +44,29 @@ def safe_wait_selector(page, selector, timeout=60000):
 def safe_click_by_index(page, selector, index, timeout=60000):
     safe_wait_selector(page, selector, timeout)
     elems = page.query_selector_all(selector)
-    if not elems:
+    if len(elems) == 0:
         raise RuntimeError(f"{selector} が見つかりません")
-    # index が負なら後ろから数える
-    target = elems[index] if index >= 0 else elems[index]
-    target.click()
+    if index < 0:
+        index = len(elems) + index
+    if index < 0 or index >= len(elems):
+        raise RuntimeError(f"{selector} index {index} out of range (len={len(elems)})")
+    elems[index].click()
 
-def select_dropdown_by_index(page, dropdown_index, option_index):
-    """indexベースで選択する。文字列は一切使わない"""
+def select_dropdown(page, index, option_text):
+    """index=0: 店舗種類, index=1: 店舗名"""
     dropdowns = page.query_selector_all("div.ant-select")
-    if len(dropdowns) <= dropdown_index:
-        raise RuntimeError(f"ドロップダウン index={dropdown_index} が見つかりません")
-    dropdowns[dropdown_index].click()
+    if len(dropdowns) <= index:
+        raise RuntimeError(f"ドロップダウン index={index} が見つかりません")
+    dropdowns[index].click()
     safe_wait_selector(page, "li[role='option']")
     options = page.query_selector_all("li[role='option']")
-    if len(options) <= option_index:
-        raise RuntimeError(f"ドロップダウン{dropdown_index} に option {option_index} がありません (len={len(options)})")
-    options[option_index].click()
-    print(f"✅ ドロップダウン{dropdown_index} → option[{option_index}] を選択")
+    texts = [o.inner_text().strip() for o in options]
+    for o in options:
+        if option_text in o.inner_text():
+            o.click()
+            print(f"✅ ドロップダウン{index} で {option_text} を選択 (候補={texts})")
+            return
+    raise RuntimeError(f"{option_text} が見つかりません. 候補={texts}")
 
 # ==============================
 # メイン処理
@@ -98,15 +103,16 @@ def main():
         safe_click_by_index(page, "button.ant-btn-primary", 0)  # 上部の「アップロード」
         print("✅ アップロード画面表示確認")
 
-        # 店舗種類・店舗名を index 指定で選択
-        select_dropdown_by_index(page, 0, 0)  # 例: 店舗種類 → 最初の選択肢 (アマゾン想定)
-        select_dropdown_by_index(page, 1, 0)  # 例: 店舗名 → 最初の選択肢 (アイプロダクト想定)
+        # 店舗種類・店舗名を選択
+        select_dropdown(page, 0, "アマゾン")
+        select_dropdown(page, 1, "アイプロダクト")
 
-        # 上传ボタンをクリック（モーダル内の最初の青いボタン）
+        # 上传ボタンをクリック（ドロップダウン選択後に有効化される）
         safe_click_by_index(page, "button.ant-btn-primary", 0)
+        print("✅ 上传ボタン押下")
 
         # ファイル添付
-        safe_wait_selector(page, "input[type='file']")
+        safe_wait_selector(page, "input[type='file']", timeout=60000)
         page.set_input_files("input[type='file']", FILE_PATH)
         print("✅ ファイル添付完了")
 
