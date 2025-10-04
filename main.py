@@ -69,18 +69,26 @@ def select_dropdown_by_index(page, dropdown_index, option_index):
 def safe_upload_file(page, file_path: str, timeout=60000):
     """hiddenな<input type='file'>にも対応して直接アップロード"""
     try:
-        print("⏳ ファイルアップロード要素を待機中...")
-        page.wait_for_selector("input[type='file']", timeout=timeout)
+        print("⏳ ファイルアップロード要素を探索中...")
+        # visible待ちをやめ、DOM存在だけ確認
+        page.wait_for_selector("input[type='file']", state="attached", timeout=timeout)
+
+        # hiddenでも直接アップロード可能
         input_elem = page.query_selector("input[type='file']")
         if not input_elem:
             raise RuntimeError("❌ input[type='file'] が見つかりませんでした。")
 
-        # hiddenでも強制セット可能
+        html_preview = input_elem.evaluate("el => el.outerHTML")
+        print(f"🔍 inputタグHTML: {html_preview}")
+
+        # hiddenでも強制アップロード可能
         input_elem.set_input_files(file_path)
-        print("✅ ファイルアップロード成功")
+        print("✅ ファイルアップロード成功（hidden input対応）")
+
     except Exception as e:
         print(f"⚠️ アップロード中にエラー発生: {e}")
         raise
+
 
 # ==============================
 # メイン処理
