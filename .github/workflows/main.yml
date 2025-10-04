@@ -15,7 +15,7 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
-          cache: "pip"   # pip キャッシュを有効化
+          cache: "pip"
 
       - name: Install dependencies
         run: |
@@ -35,10 +35,10 @@ jobs:
           TENTON_PASS: ${{ secrets.TENTON_PASS }}
         run: python main.py
 
-      # ↓ ここを新規追加
+      # ✅ 修正版：v4に更新
       - name: Upload debug artifacts
-        if: failure()  # ← ジョブが失敗したときのみアップロード
-        uses: actions/upload-artifact@v3
+        if: failure()
+        uses: actions/upload-artifact@v4
         with:
           name: debug-files
           path: |
