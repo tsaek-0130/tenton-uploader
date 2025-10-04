@@ -132,12 +132,23 @@ def main():
         # (4) ファイル添付（hidden input対応）
         safe_upload_file(page, FILE_PATH)
 
-        # (5) 导入ボタン（青いやつ） - モーダル内最後の primary ボタンを押す
-        modal_buttons = page.query_selector_all("div.ant-modal button.ant-btn-primary")
-        if not modal_buttons:
-            raise RuntimeError("❌ モーダル内の导入ボタンが見つかりません")
-        modal_buttons[-1].click()
-        print("✅ 导入ボタン押下（index指定・文字列非依存）")
+        # (5) 导入ボタン（青いやつ） - モーダル内最後の primary ボタンをリトライ探索して押す
+        print("⏳ 导入ボタンをリトライ探索中...")
+        clicked = False
+        for i in range(30):  # 最大30秒リトライ
+            modal_buttons = page.query_selector_all("div.ant-modal button.ant-btn-primary")
+            if modal_buttons:
+                modal_buttons[-1].click()
+                print(f"✅ 导入ボタン押下成功（{i+1}回目の試行）")
+                clicked = True
+                break
+            time.sleep(1)
+
+        if not clicked:
+            page.screenshot(path="debug_screenshot_modal.png", full_page=True)
+            with open("debug_modal.html", "w", encoding="utf-8") as f:
+                f.write(page.content())
+            raise RuntimeError("❌ 30秒待っても导入ボタンが出ませんでした。debug_modal.htmlを確認してください。")
 
         # (6) 一覧反映を待機（最大120秒）
         print("⏳ 导入結果の反映を待機中...")
