@@ -34,3 +34,13 @@ jobs:
           TENTON_USER: ${{ secrets.TENTON_USER }}
           TENTON_PASS: ${{ secrets.TENTON_PASS }}
         run: python main.py
+
+      # ↓ ここを新規追加
+      - name: Upload debug artifacts
+        if: failure()  # ← ジョブが失敗したときのみアップロード
+        uses: actions/upload-artifact@v3
+        with:
+          name: debug-files
+          path: |
+            debug*.html
+            debug*.png
