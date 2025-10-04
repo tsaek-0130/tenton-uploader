@@ -1,6 +1,7 @@
 import os
 import dropbox
 import requests
+import time
 from playwright.sync_api import sync_playwright
 
 # ==============================
@@ -63,6 +64,25 @@ def select_dropdown_by_index(page, dropdown_index, option_index):
     print(f"✅ ドロップダウン{dropdown_index} → option[{option_index}] を選択")
 
 # ==============================
+# hidden input 対応のファイルアップロード
+# ==============================
+def safe_upload_file(page, file_path: str, timeout=60000):
+    """hiddenな<input type='file'>にも対応して直接アップロード"""
+    try:
+        print("⏳ ファイルアップロード要素を待機中...")
+        page.wait_for_selector("input[type='file']", timeout=timeout)
+        input_elem = page.query_selector("input[type='file']")
+        if not input_elem:
+            raise RuntimeError("❌ input[type='file'] が見つかりませんでした。")
+
+        # hiddenでも強制セット可能
+        input_elem.set_input_files(file_path)
+        print("✅ ファイルアップロード成功")
+    except Exception as e:
+        print(f"⚠️ アップロード中にエラー発生: {e}")
+        raise
+
+# ==============================
 # メイン処理
 # ==============================
 def main():
@@ -102,18 +122,16 @@ def main():
         select_dropdown_by_index(page, 1, 0)  # 店舗名（例: アイプロダクト）
         
         # (3) 上传ボタンをクリック（モーダル内のアップロード）
-        safe_click_by_index(page, "button.ant-btn", 0)  # ← 修正
+        safe_click_by_index(page, "button.ant-btn", 0)
         print("✅ 上传ボタン押下")
+        time.sleep(3)
 
-        # (4) ファイル添付
-        safe_wait_selector(page, "input[type='file']", timeout=60000)
-        page.set_input_files("input[type='file']", FILE_PATH)
-        print("✅ ファイル添付完了")
+        # (4) ファイル添付（hidden input対応）
+        safe_upload_file(page, FILE_PATH)
 
         # (5) 导入ボタン（青いやつ）
         safe_click_by_index(page, "button.ant-btn-primary", -1)
         print("✅ 导入実行")
-
 
         # (6) 一覧反映を待機
         page.wait_for_timeout(10000)
