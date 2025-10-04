@@ -132,13 +132,23 @@ def main():
         # (4) ファイル添付（hidden input対応）
         safe_upload_file(page, FILE_PATH)
 
-        # (5) 导入ボタン（青いやつ） - モーダル内最後の primary ボタンをリトライ探索して押す
+        # (5) 导入ボタン（青いやつ） - 拡張探索ロジック
         print("⏳ 导入ボタンをリトライ探索中...")
+
         clicked = False
         for i in range(30):  # 最大30秒リトライ
-            modal_buttons = page.query_selector_all("div.ant-modal button.ant-btn-primary")
-            if modal_buttons:
-                modal_buttons[-1].click()
+            # モーダル内 or 全体のボタンを広く探索
+            all_primary_buttons = page.query_selector_all("button.ant-btn-primary")
+            modal_buttons = page.query_selector_all("div.ant-modal-root button.ant-btn-primary")
+
+            all_found = modal_buttons or all_primary_buttons
+            if all_found:
+                print(f"🟦 {len(all_found)}個の primary ボタンを検出（{i+1}回目）:")
+                for idx, b in enumerate(all_found):
+                    txt = b.inner_text().strip()
+                    print(f"   [{idx}] text='{txt}'")
+                # 最後のボタンをクリック（通常「导入」が一番下）
+                all_found[-1].click()
                 print(f"✅ 导入ボタン押下成功（{i+1}回目の試行）")
                 clicked = True
                 break
@@ -149,6 +159,7 @@ def main():
             with open("debug_modal.html", "w", encoding="utf-8") as f:
                 f.write(page.content())
             raise RuntimeError("❌ 30秒待っても导入ボタンが出ませんでした。debug_modal.htmlを確認してください。")
+
 
         # (6) 一覧反映を待機（最大120秒）
         print("⏳ 导入結果の反映を待機中...")
