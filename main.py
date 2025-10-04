@@ -100,19 +100,20 @@ def main():
         # (2) 店舗種類・店舗名を index 指定で選択
         select_dropdown_by_index(page, 0, 0)  # 店舗種類（例: アマゾン）
         select_dropdown_by_index(page, 1, 0)  # 店舗名（例: アイプロダクト）
-
-        # (3) 上传ボタンをクリック
-        safe_click_by_index(page, "button.ant-btn-primary", 0)
+        
+        # (3) 上传ボタンをクリック（モーダル内のアップロード）
+        safe_click_by_index(page, "button.ant-btn", 0)  # ← 修正
         print("✅ 上传ボタン押下")
 
         # (4) ファイル添付
-        safe_wait_selector(page, "input[type='file']")
+        safe_wait_selector(page, "input[type='file']", timeout=60000)
         page.set_input_files("input[type='file']", FILE_PATH)
         print("✅ ファイル添付完了")
 
-        # (5) 导入ボタン
+        # (5) 导入ボタン（青いやつ）
         safe_click_by_index(page, "button.ant-btn-primary", -1)
         print("✅ 导入実行")
+
 
         # (6) 一覧反映を待機
         page.wait_for_timeout(10000)
