@@ -24,7 +24,7 @@ jobs:
 
       - name: Install Playwright browsers
         run: |
-          npx playwright install --with-deps chromium
+          python -m playwright install --with-deps
 
       - name: Run script
         env:
