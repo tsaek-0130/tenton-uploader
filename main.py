@@ -90,36 +90,46 @@ def safe_upload_file(page, file_path: str, timeout=60000):
 # ==============================
 def click_modal_primary_import(page, timeout_sec=60):
     """
-    モーダル内の primary ボタン（＝导入）を、テキストに依存せず押す。
-    display:noneでもJS経由でクリック。
+    モーダル内の primary ボタン（＝导入）を、再描画やhiddenにも対応して押す。
+    display:none や再生成にも耐性を持たせる。
     """
     print("⏳ 导入ボタンをリトライ探索中...")
     end = time.time() + timeout_sec
+    tried_once = False
+
     while time.time() < end:
         try:
-            modal = page.query_selector("div.ant-modal, div[role='dialog']")
-            if modal:
-                buttons = modal.query_selector_all("button.ant-btn-primary")
-                if not buttons:
-                    buttons = page.query_selector_all("div.ant-modal-footer button.ant-btn-primary")
+            # 毎回モーダルを新規に取得（再描画対応）
+            modals = page.query_selector_all("div.ant-modal, div[role='dialog']")
+            if modals:
+                for modal in modals:
+                    # modal内のすべてのprimaryボタン取得
+                    buttons = modal.query_selector_all("button.ant-btn-primary")
+                    if not buttons:
+                        buttons = page.query_selector_all("div.ant-modal-footer button.ant-btn-primary")
 
-                if buttons:
-                    target = buttons[-1]
-                    html_preview = target.evaluate("el => el.outerHTML")
-                    print(f"🔍 导入ボタンHTML: {html_preview}")
+                    if buttons:
+                        target = buttons[-1]
+                        if not tried_once:
+                            html_preview = target.evaluate("el => el.outerHTML")
+                            print(f"🔍 导入ボタンHTML: {html_preview}")
+                            tried_once = True
 
-                    # hidden対策 → JS経由でクリック
-                    page.evaluate("(btn) => btn.click()", target)
-                    print("✅ 导入ボタン押下（JSクリック対応）")
-                    return True
+                        # hidden対応: JSクリック
+                        page.evaluate("(btn) => btn.click()", target)
+                        print("✅ 导入ボタン押下（再描画・JS対応）")
+                        return True
         except Exception as e:
             print(f"⚠️ 导入ボタン探索中エラー: {e}")
+
         time.sleep(1)
 
+    # 最後まで見つからなければデバッグ保存
     page.screenshot(path="debug_screenshot_modal.png", full_page=True)
     with open("debug_modal.html", "w", encoding="utf-8") as f:
         f.write(page.content())
     return False
+
 
 # ==============================
 # メイン処理
