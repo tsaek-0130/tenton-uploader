@@ -132,13 +132,29 @@ def main():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
 
-        # ログイン
-        page.goto("http://8.209.213.176/login")
+        # ログイン（リトライ + 長時間タイムアウト対応）
+        max_retries = 2
+        for attempt in range(1, max_retries + 1):
+            try:
+                print(f"🌐 ログインページへアクセス中...（試行 {attempt}/{max_retries}）")
+                page.goto("http://8.209.213.176/login", timeout=180000)  # 最大180秒待機
+                break
+            except Exception as e:
+                print(f"⚠️ ログインページへのアクセス失敗（{attempt}回目）: {e}")
+                if attempt == max_retries:
+                    raise RuntimeError("❌ ログインページへのアクセスに失敗しました（最大リトライ回数到達）")
+                else:
+                    print("🔁 10秒後に再試行します...")
+                    time.sleep(10)
+
         page.fill("#username", USERNAME)
         page.fill("#password", PASSWORD)
         page.click("button.login-button")
+
+        # ロード完了まで長めに待機
         page.wait_for_load_state("networkidle", timeout=180000)
         print("✅ ログイン成功")
+
 
         # 言語を日本語に統一
         try:
