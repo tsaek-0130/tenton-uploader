@@ -86,6 +86,41 @@ def safe_upload_file(page, file_path: str, timeout=60000):
         raise
 
 # ==============================
+# モーダル内の「导入」(青) を確実に押す（文字列非依存）
+# ==============================
+def click_modal_primary_import(page, timeout_sec=60):
+    """
+    モーダル内の primary ボタン（＝导入）を、テキストに依存せず押す。
+    - modal スコープ: ant-modal / ant-modal-footer / role=dialog
+    - 出るまでリトライ
+    """
+    print("⏳ 导入ボタンをリトライ探索中...")
+    end = time.time() + timeout_sec
+    while time.time() < end:
+        # まずモーダルの存在を確認（attachedでOK）
+        modal = page.query_selector("div.ant-modal, div[role='dialog']")
+        if modal:
+            # モーダル内の primary を優先的に探索
+            buttons = modal.query_selector_all("button.ant-btn-primary")
+            if not buttons:
+                # フッター直指定のケースにも対応
+                buttons = page.query_selector_all("div.ant-modal-footer button.ant-btn-primary")
+            if buttons:
+                # 一番右（最後）を押すのが通例で「导入」
+                try:
+                    # 念のため可視化待ち（ただし hidden でも click は通ることが多いので短め）
+                    page.wait_for_timeout(200)
+                    buttons[-1].click()
+                    print("✅ 导入ボタン押下（モーダル内・index指定）")
+                    return True
+                except Exception as e:
+                    print(f"⚠️ 导入ボタン押下トライ中エラー: {e}")
+        # モーダルの描画・再描画待ち
+        time.sleep(1)
+
+    return False
+
+# ==============================
 # メイン処理
 # ==============================
 def main():
@@ -128,21 +163,18 @@ def main():
         safe_click_by_index(page, "button.ant-btn", 0)
         print("✅ 上传ボタン押下")
         time.sleep(3)
-        
+
         # (4) ファイル添付（hidden input対応）
         safe_upload_file(page, FILE_PATH)
-        print("🌐 現在のURL:", page.url)  # ← ここ。safe_upload_file と同じインデント
+        print("🌐 現在のURL:", page.url)
 
-        # (5) 导入ボタン（青）をクリック
-        print("⏳ 导入ボタンをリトライ探索中...")
-
-        modal_buttons = page.query_selector_all(
-            "div[role='dialog'] button.ant-btn-primary, div.ant-modal button.ant-btn-primary"
-        )
-        if not modal_buttons:
+        # (5) 导入ボタン（青）をクリック（モーダル限定・文字列非依存・リトライ）
+        if not click_modal_primary_import(page, timeout_sec=60):
+            # デバッグ用出力
+            page.screenshot(path="debug_screenshot_modal.png", full_page=True)
+            with open("debug_modal.html", "w", encoding="utf-8") as f:
+                f.write(page.content())
             raise RuntimeError("❌ 导入ボタンが見つかりません")
-        modal_buttons[-1].click()
-        print("✅ 导入ボタン押下")
 
         # (6) エラーモーダル（提示）を検出してログ出力（古い注文など）
         print("⏳ エラーモーダル（提示）検出を待機中...")
@@ -152,9 +184,10 @@ def main():
             print("⚠️ エラーモーダルを検出")
             error_found = True
 
-            # エラーメッセージ抽出
+            # エラーメッセージ抽出（span/div のテキストを全部ログ出力）
             error_texts = page.query_selector_all(
-                "div.ant-modal-confirm div.ant-modal-confirm-body span, div.ant-modal-confirm div.ant-modal-confirm-body div"
+                "div.ant-modal-confirm div.ant-modal-confirm-body span, "
+                "div.ant-modal-confirm div.ant-modal-confirm-body div"
             )
             if error_texts:
                 print("🧾 エラー内容一覧:")
@@ -198,7 +231,6 @@ def main():
             print("⚠️ 一部注文は既存注文としてスキップされました（上記ログ参照）")
         else:
             print("✅ 全注文が正常に取り込まれました")
-
 
         browser.close()
 
