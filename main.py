@@ -86,38 +86,39 @@ def safe_upload_file(page, file_path: str, timeout=60000):
         raise
 
 # ==============================
-# モーダル内の「导入」(青) を確実に押す（文字列非依存）
+# モーダル内の「导入」(青) を確実に押す（文字列非依存・hidden対応）
 # ==============================
 def click_modal_primary_import(page, timeout_sec=60):
     """
     モーダル内の primary ボタン（＝导入）を、テキストに依存せず押す。
-    - modal スコープ: ant-modal / ant-modal-footer / role=dialog
-    - 出るまでリトライ
+    display:noneでもJS経由でクリック。
     """
     print("⏳ 导入ボタンをリトライ探索中...")
     end = time.time() + timeout_sec
     while time.time() < end:
-        # まずモーダルの存在を確認（attachedでOK）
-        modal = page.query_selector("div.ant-modal, div[role='dialog']")
-        if modal:
-            # モーダル内の primary を優先的に探索
-            buttons = modal.query_selector_all("button.ant-btn-primary")
-            if not buttons:
-                # フッター直指定のケースにも対応
-                buttons = page.query_selector_all("div.ant-modal-footer button.ant-btn-primary")
-            if buttons:
-                # 一番右（最後）を押すのが通例で「导入」
-                try:
-                    # 念のため可視化待ち（ただし hidden でも click は通ることが多いので短め）
-                    page.wait_for_timeout(200)
-                    buttons[-1].click()
-                    print("✅ 导入ボタン押下（モーダル内・index指定）")
+        try:
+            modal = page.query_selector("div.ant-modal, div[role='dialog']")
+            if modal:
+                buttons = modal.query_selector_all("button.ant-btn-primary")
+                if not buttons:
+                    buttons = page.query_selector_all("div.ant-modal-footer button.ant-btn-primary")
+
+                if buttons:
+                    target = buttons[-1]
+                    html_preview = target.evaluate("el => el.outerHTML")
+                    print(f"🔍 导入ボタンHTML: {html_preview}")
+
+                    # hidden対策 → JS経由でクリック
+                    page.evaluate("(btn) => btn.click()", target)
+                    print("✅ 导入ボタン押下（JSクリック対応）")
                     return True
-                except Exception as e:
-                    print(f"⚠️ 导入ボタン押下トライ中エラー: {e}")
-        # モーダルの描画・再描画待ち
+        except Exception as e:
+            print(f"⚠️ 导入ボタン探索中エラー: {e}")
         time.sleep(1)
 
+    page.screenshot(path="debug_screenshot_modal.png", full_page=True)
+    with open("debug_modal.html", "w", encoding="utf-8") as f:
+        f.write(page.content())
     return False
 
 # ==============================
@@ -137,7 +138,7 @@ def main():
         for attempt in range(1, max_retries + 1):
             try:
                 print(f"🌐 ログインページへアクセス中...（試行 {attempt}/{max_retries}）")
-                page.goto("http://8.209.213.176/login", timeout=180000)  # 最大180秒待機
+                page.goto("http://8.209.213.176/login", timeout=180000)
                 break
             except Exception as e:
                 print(f"⚠️ ログインページへのアクセス失敗（{attempt}回目）: {e}")
@@ -150,13 +151,9 @@ def main():
         page.fill("#username", USERNAME)
         page.fill("#password", PASSWORD)
         page.click("button.login-button")
-
-        # ロード完了まで長めに待機
         page.wait_for_load_state("networkidle", timeout=180000)
         print("✅ ログイン成功")
 
-
-        # 言語を日本語に統一
         try:
             page.click("span.ant-pro-drop-down")
             safe_wait_selector(page, "li[role='menuitem']")
@@ -167,40 +164,31 @@ def main():
         except Exception as e:
             print("⚠️ 言語切替失敗:", e)
 
-        # (1) アップロードモーダルを開く
         safe_click_by_index(page, "button.ant-btn-primary", 0)
         print("✅ アップロード画面表示確認")
 
-        # (2) 店舗種類・店舗名を index 指定で選択
-        select_dropdown_by_index(page, 0, 0)  # 店舗種類（例: アマゾン）
-        select_dropdown_by_index(page, 1, 0)  # 店舗名（例: アイプロダクト）
+        select_dropdown_by_index(page, 0, 0)
+        select_dropdown_by_index(page, 1, 0)
 
-        # (3) 上传ボタンをクリック（モーダル内のアップロード）
         safe_click_by_index(page, "button.ant-btn", 0)
         print("✅ 上传ボタン押下")
         time.sleep(3)
 
-        # (4) ファイル添付（hidden input対応）
         safe_upload_file(page, FILE_PATH)
         print("🌐 現在のURL:", page.url)
 
-        # (5) 导入ボタン（青）をクリック（モーダル限定・文字列非依存・リトライ）
         if not click_modal_primary_import(page, timeout_sec=60):
-            # デバッグ用出力
             page.screenshot(path="debug_screenshot_modal.png", full_page=True)
             with open("debug_modal.html", "w", encoding="utf-8") as f:
                 f.write(page.content())
             raise RuntimeError("❌ 导入ボタンが見つかりません")
 
-        # (6) エラーモーダル（提示）を検出してログ出力（古い注文など）
         print("⏳ エラーモーダル（提示）検出を待機中...")
         error_found = False
         try:
             page.wait_for_selector("div.ant-modal-confirm", timeout=8000)
             print("⚠️ エラーモーダルを検出")
             error_found = True
-
-            # エラーメッセージ抽出（span/div のテキストを全部ログ出力）
             error_texts = page.query_selector_all(
                 "div.ant-modal-confirm div.ant-modal-confirm-body span, "
                 "div.ant-modal-confirm div.ant-modal-confirm-body div"
@@ -211,17 +199,13 @@ def main():
                     txt = e.inner_text().strip()
                     if txt:
                         print("   ", txt)
-
-            # 「知道了」ボタンを押して閉じる
             know_btns = page.query_selector_all("div.ant-modal-confirm button.ant-btn-primary")
             if know_btns:
                 know_btns[-1].click()
                 print("✅ 知道了ボタン押下（エラーモーダル閉じ）")
-
         except Exception:
             print("✅ エラーモーダルなし（正常）")
 
-        # (7) 一覧反映（checkboxが出るまで最大60秒待機）
         print("⏳ 一覧反映を待機中...")
         try:
             page.wait_for_selector("input[type='checkbox']", state="visible", timeout=60000)
@@ -232,7 +216,6 @@ def main():
                 f.write(page.content())
             raise RuntimeError("❌ 一覧反映が確認できません。debug_list.htmlを確認してください。")
 
-        # (8) 一括確認 → 确认（常に実行）
         print("⏳ 一括確認処理を実行中...")
         try:
             safe_click_by_index(page, "input[type='checkbox']", 0)
@@ -242,7 +225,6 @@ def main():
         except Exception as e:
             print(f"⚠️ 一括確認処理でエラー: {e}")
 
-        # (9) 結果まとめ
         if error_found:
             print("⚠️ 一部注文は既存注文としてスキップされました（上記ログ参照）")
         else:
