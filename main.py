@@ -128,11 +128,10 @@ def main():
         safe_click_by_index(page, "button.ant-btn", 0)
         print("✅ 上传ボタン押下")
         time.sleep(3)
-
-# (4) ファイル添付（hidden input対応）
-safe_upload_file(page, FILE_PATH)
-print("🌐 現在のURL:", page.url)  # ← この行を追加
-
+        
+        # (4) ファイル添付（hidden input対応）
+        safe_upload_file(page, FILE_PATH)
+        print("🌐 現在のURL:", page.url)  # ← ここ。safe_upload_file と同じインデント
 
         # (5) 导入ボタン（青いやつ） - モーダル内最後の primary ボタンをリトライ探索して押す
         print("⏳ 导入ボタンをリトライ探索中...")
