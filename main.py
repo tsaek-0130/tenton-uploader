@@ -95,21 +95,18 @@ def click_modal_primary_import(page, timeout_sec=60):
     print("⏳ 导入ボタンをリトライ探索中...")
     end = time.time() + timeout_sec
     while time.time() < end:
-        # すべての ant-btn-primary を取得して、テキスト出力
         buttons = page.query_selector_all("button.ant-btn-primary")
         print(f"🔍 検出されたボタン数: {len(buttons)}")
         for i, btn in enumerate(buttons):
             try:
                 text = btn.inner_text().strip()
                 print(f"   [{i}] {text}")
-                if "导" in text:  # 「导入」を含むボタンを探す
+                if "导" in text:
                     btn.click()
                     print(f"✅ 『{text}』ボタンをクリック（index={i}）")
                     return True
             except Exception as e:
                 print(f"⚠️ ボタン[{i}] 処理エラー: {e}")
-
-        # 少し待って再探索
         time.sleep(1)
     return False
 
@@ -168,6 +165,18 @@ def main():
 
         safe_upload_file(page, FILE_PATH)
         print("🌐 現在のURL:", page.url)
+
+        # 🔍 403 ページ（セッション切れ）検知 → 再ログイン処理
+        if "403" in page.content() or "没有权限访问该页面" in page.content():
+            print("⚠️ 403 ページを検出（セッション切れの可能性）。再ログインを試みます...")
+            page.goto("http://8.209.213.176/login", timeout=180000)
+            page.fill("#username", USERNAME)
+            page.fill("#password", PASSWORD)
+            page.click("button.login-button")
+            page.wait_for_load_state("networkidle", timeout=180000)
+            print("✅ 再ログイン成功")
+            page.goto("http://8.209.213.176/fundamentalData/goodInfo", timeout=180000)
+            print("✅ アップロード画面へ再遷移完了")
 
         if not click_modal_primary_import(page, timeout_sec=60):
             page.screenshot(path="debug_screenshot_modal.png", full_page=True)
