@@ -177,8 +177,12 @@ def main():
                 context.clear_cookies()
                 print("🧹 Cookieをクリアしました。")
 
-                # 新しいページを開いて再ログイン
-                page = context.new_page()
+                # ✅ browser.new_context() を使って完全に新しいコンテキストを作る
+                new_context = browser.new_context()
+                page = new_context.new_page()
+                print("🆕 新しいブラウザコンテキストを作成しました。")
+
+                # ログインページへ遷移
                 page.goto("http://8.209.213.176/login", timeout=300000)
                 print("🌐 新しいページでログイン画面を開きました。")
 
@@ -196,6 +200,7 @@ def main():
 
             except Exception as e:
                 raise RuntimeError(f"❌ 再ログイン処理に失敗しました: {e}")
+
 
 
         # 导入ボタン
