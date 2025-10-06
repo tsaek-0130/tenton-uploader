@@ -90,30 +90,28 @@ def safe_upload_file(page, file_path: str, timeout=60000):
 # ==============================
 def click_modal_primary_import(page, timeout_sec=60):
     """
-    モーダル内の「导入」ボタンを確実に押す
-    - 表示中の ant-modal 内の footer を限定
+    モーダル内 or ページ上の「导入」ボタンを探索してデバッグ出力。
     """
     print("⏳ 导入ボタンをリトライ探索中...")
     end = time.time() + timeout_sec
     while time.time() < end:
-        # 「表示されている」モーダルのみを対象
-        modals = page.query_selector_all("div.ant-modal[style*='display: block']")
-        for modal in modals:
-            footer_btns = modal.query_selector_all(".ant-modal-footer button.ant-btn-primary")
-            for btn in footer_btns:
-                try:
-                    text = btn.inner_text().strip()
-                    if "导 入" in text or "导入" in text:
-                        btn.click()
-                        print("✅ 导入ボタン押下（モーダル内）")
-                        return True
-                except Exception as e:
-                    print(f"⚠️ 導入ボタン操作中エラー: {e}")
-        time.sleep(0.5)
+        # すべての ant-btn-primary を取得して、テキスト出力
+        buttons = page.query_selector_all("button.ant-btn-primary")
+        print(f"🔍 検出されたボタン数: {len(buttons)}")
+        for i, btn in enumerate(buttons):
+            try:
+                text = btn.inner_text().strip()
+                print(f"   [{i}] {text}")
+                if "导" in text:  # 「导入」を含むボタンを探す
+                    btn.click()
+                    print(f"✅ 『{text}』ボタンをクリック（index={i}）")
+                    return True
+            except Exception as e:
+                print(f"⚠️ ボタン[{i}] 処理エラー: {e}")
+
+        # 少し待って再探索
+        time.sleep(1)
     return False
-
-
-
 
 # ==============================
 # メイン処理
