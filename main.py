@@ -172,31 +172,31 @@ def main():
             print("⚠️ 403 ページを検出（セッション切れの可能性）。再ログインを試みます...")
 
             try:
+                # 既存セッション削除
+                context = page.context
+                context.clear_cookies()
+                print("🧹 Cookieをクリアしました。")
+
+                # 新しいページを開いて再ログイン
+                page = context.new_page()
                 page.goto("http://8.209.213.176/login", timeout=300000)
+                print("🌐 新しいページでログイン画面を開きました。")
+
+                # ログインフォーム待機
+                page.wait_for_selector("#username", timeout=180000)
+                page.fill("#username", USERNAME)
+                page.fill("#password", PASSWORD)
+                page.click("button.login-button")
+                page.wait_for_load_state("networkidle", timeout=180000)
+                print("✅ 再ログイン成功")
+
+                # 再遷移
+                page.goto("http://8.209.213.176/fundamentalData/goodInfo", timeout=180000)
+                print("✅ アップロード画面へ再遷移完了")
+
             except Exception as e:
-                print(f"⚠️ ログインページ再アクセス失敗: {e}")
-                page.reload()
+                raise RuntimeError(f"❌ 再ログイン処理に失敗しました: {e}")
 
-            print("⏳ ログインページ読み込み待機中（最大180秒）...")
-            try:
-                page.wait_for_selector("#username", timeout=180000)
-                print("✅ ログインページ読み込み完了")
-            except Exception:
-                print("⚠️ ログイン要素が出ないため再読み込み...")
-                page.reload()
-                page.wait_for_selector("#username", timeout=180000)
-                print("✅ ログインページ読み込み完了（再トライ成功）")
-
-            # 再ログイン実行
-            page.fill("#username", USERNAME)
-            page.fill("#password", PASSWORD)
-            page.click("button.login-button")
-            page.wait_for_load_state("networkidle", timeout=180000)
-            print("✅ 再ログイン成功")
-
-            # 再遷移
-            page.goto("http://8.209.213.176/fundamentalData/goodInfo", timeout=180000)
-            print("✅ アップロード画面へ再遷移完了")
 
         # 导入ボタン
         if not click_modal_primary_import(page, timeout_sec=60):
