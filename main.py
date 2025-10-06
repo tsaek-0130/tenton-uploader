@@ -89,9 +89,7 @@ def safe_upload_file(page, file_path: str, timeout=60000):
 # モーダル内の「导入」(青) を確実に押す（文字列非依存・hidden対応）
 # ==============================
 def click_modal_primary_import(page, timeout_sec=60):
-    """
-    モーダル内 or ページ上の「导入」ボタンを探索してデバッグ出力。
-    """
+    """モーダル内 or ページ上の「导入」ボタンを探索してデバッグ出力。"""
     print("⏳ 导入ボタンをリトライ探索中...")
     end = time.time() + timeout_sec
     while time.time() < end:
@@ -127,7 +125,7 @@ def main():
         for attempt in range(1, max_retries + 1):
             try:
                 print(f"🌐 ログインページへアクセス中...（試行 {attempt}/{max_retries}）")
-                page.goto("http://8.209.213.176/login", timeout=180000)
+                page.goto("http://8.209.213.176/login", timeout=300000)  # 最大5分待機
                 break
             except Exception as e:
                 print(f"⚠️ ログインページへのアクセス失敗（{attempt}回目）: {e}")
@@ -137,12 +135,14 @@ def main():
                     print("🔁 10秒後に再試行します...")
                     time.sleep(10)
 
+        page.wait_for_selector("#username", timeout=180000)
         page.fill("#username", USERNAME)
         page.fill("#password", PASSWORD)
         page.click("button.login-button")
         page.wait_for_load_state("networkidle", timeout=180000)
         print("✅ ログイン成功")
 
+        # 言語切替
         try:
             page.click("span.ant-pro-drop-down")
             safe_wait_selector(page, "li[role='menuitem']")
@@ -153,6 +153,7 @@ def main():
         except Exception as e:
             print("⚠️ 言語切替失敗:", e)
 
+        # アップロードモーダル
         safe_click_by_index(page, "button.ant-btn-primary", 0)
         print("✅ アップロード画面表示確認")
 
@@ -166,24 +167,45 @@ def main():
         safe_upload_file(page, FILE_PATH)
         print("🌐 現在のURL:", page.url)
 
-        # 🔍 403 ページ（セッション切れ）検知 → 再ログイン処理
+        # 403 検知 → 再ログイン処理
         if "403" in page.content() or "没有权限访问该页面" in page.content():
             print("⚠️ 403 ページを検出（セッション切れの可能性）。再ログインを試みます...")
-            page.goto("http://8.209.213.176/login", timeout=180000)
+
+            try:
+                page.goto("http://8.209.213.176/login", timeout=300000)
+            except Exception as e:
+                print(f"⚠️ ログインページ再アクセス失敗: {e}")
+                page.reload()
+
+            print("⏳ ログインページ読み込み待機中（最大180秒）...")
+            try:
+                page.wait_for_selector("#username", timeout=180000)
+                print("✅ ログインページ読み込み完了")
+            except Exception:
+                print("⚠️ ログイン要素が出ないため再読み込み...")
+                page.reload()
+                page.wait_for_selector("#username", timeout=180000)
+                print("✅ ログインページ読み込み完了（再トライ成功）")
+
+            # 再ログイン実行
             page.fill("#username", USERNAME)
             page.fill("#password", PASSWORD)
             page.click("button.login-button")
             page.wait_for_load_state("networkidle", timeout=180000)
             print("✅ 再ログイン成功")
+
+            # 再遷移
             page.goto("http://8.209.213.176/fundamentalData/goodInfo", timeout=180000)
             print("✅ アップロード画面へ再遷移完了")
 
+        # 导入ボタン
         if not click_modal_primary_import(page, timeout_sec=60):
             page.screenshot(path="debug_screenshot_modal.png", full_page=True)
             with open("debug_modal.html", "w", encoding="utf-8") as f:
                 f.write(page.content())
             raise RuntimeError("❌ 导入ボタンが見つかりません")
 
+        # エラーモーダル
         print("⏳ エラーモーダル（提示）検出を待機中...")
         error_found = False
         try:
@@ -207,6 +229,7 @@ def main():
         except Exception:
             print("✅ エラーモーダルなし（正常）")
 
+        # 一覧反映
         print("⏳ 一覧反映を待機中...")
         try:
             page.wait_for_selector("input[type='checkbox']", state="visible", timeout=60000)
@@ -217,6 +240,7 @@ def main():
                 f.write(page.content())
             raise RuntimeError("❌ 一覧反映が確認できません。debug_list.htmlを確認してください。")
 
+        # 一括確認
         print("⏳ 一括確認処理を実行中...")
         try:
             safe_click_by_index(page, "input[type='checkbox']", 0)
@@ -226,6 +250,7 @@ def main():
         except Exception as e:
             print(f"⚠️ 一括確認処理でエラー: {e}")
 
+        # 結果
         if error_found:
             print("⚠️ 一部注文は既存注文としてスキップされました（上記ログ参照）")
         else:
