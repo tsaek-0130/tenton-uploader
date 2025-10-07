@@ -173,7 +173,12 @@ def main():
 
         # ファイルアップロード
         safe_upload_file(page, FILE_PATH)
+        # ファイルアップロード直後の挙動確認
         print("🌐 現在のURL:", page.url)
+        print("📄 page title:", page.title())
+        with open("debug_after_upload.html", "w", encoding="utf-8") as f:
+            f.write(page.content())
+
 
         # アップロード後のページHTMLを保存して中身を確認
         with open("debug_after_upload.html", "w", encoding="utf-8") as f:
