@@ -1,4 +1,5 @@
 import os
+import json
 import dropbox
 import requests
 import time
@@ -144,13 +145,23 @@ def main():
         time.sleep(2)
         safe_upload_file(page, FILE_PATH)
 
-        # 🍪 Cookieを取得して直接API叩く
-        print("🍪 Cookie取得中...")
+        # --- ✅ ここから修正版: tokenをstate.jsonから直接抽出 ---
+        print("🍪 state.jsonからtokenを取得中...")
 
-        # ページ上から document.cookie を直接取得（確実に）
-        cookie_header = page.evaluate("document.cookie")
-        print(f"Cookie: {cookie_header}")
+        token_value = None
+        if os.path.exists(STATE_FILE):
+            with open(STATE_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                cookies = data.get("cookies", [])
+                for c in cookies:
+                    if c.get("name") == "token":
+                        token_value = c.get("value")
+                        print(f"✅ token取得成功: {token_value[:20]}...")
 
+        if not token_value:
+            raise RuntimeError("❌ tokenがstate.jsonから取得できませんでした")
+
+        cookie_header = f"token={token_value}"
         api_url = "http://8.209.213.176/api/back/order/importOrderYmx"
         headers = {
             "Cookie": cookie_header,
@@ -165,9 +176,8 @@ def main():
         print("📡 レスポンスコード:", res.status_code)
         print("📄 レスポンス内容:", res.text[:500])
 
-
         if res.status_code == 200:
-            print("✅ アップロード成功（403回避）")
+            print("✅ アップロード成功（403・401完全回避）")
         else:
             print("❌ アップロード失敗。レスポンスを確認してください。")
 
