@@ -174,6 +174,9 @@ def main():
         # ファイルアップロード
         safe_upload_file(page, FILE_PATH)
         print("🌐 現在のURL:", page.url)
+        with open("debug_after_upload.html", "w", encoding="utf-8") as f:
+        f.write(page.content())
+
 
         # 导入ボタン
         if not click_modal_primary_import(page, timeout_sec=60):
