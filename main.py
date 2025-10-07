@@ -96,9 +96,11 @@ def login_and_save_state(browser, username, password):
     page.fill("#password", password)
     page.click("button.login-button")
     page.wait_for_load_state("networkidle", timeout=180000)
-    # ここ追加👇
+
+    # localStorage内容確認（デバッグ用）
     local_data = page.evaluate("() => JSON.stringify(window.localStorage)")
     print("💾 localStorage内容:", local_data)
+
     print("✅ ログイン成功、state.jsonへ保存中...")
     context.storage_state(path=STATE_FILE)
     context.close()
@@ -148,26 +150,18 @@ def main():
         time.sleep(2)
         safe_upload_file(page, FILE_PATH)
 
-        # --- ✅ ここから修正版: tokenをstate.jsonから直接抽出 ---
-        print("🍪 state.jsonからtokenを取得中...")
+        # --- ✅ localStorageからAccess-Token取得 ---
+        print("🔑 localStorageからAccess-Token取得中...")
+        access_token = page.evaluate("() => localStorage.getItem('Access-Token')")
+        if not access_token:
+            raise RuntimeError("❌ localStorageにAccess-Tokenが見つかりませんでした")
 
-        token_value = None
-        if os.path.exists(STATE_FILE):
-            with open(STATE_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                cookies = data.get("cookies", [])
-                for c in cookies:
-                    if c.get("name") == "token":
-                        token_value = c.get("value")
-                        print(f"✅ token取得成功: {token_value[:20]}...")
+        access_token = access_token.strip('"')
+        print(f"✅ Access-Token取得成功: {access_token[:20]}...")
 
-        if not token_value:
-            raise RuntimeError("❌ tokenがstate.jsonから取得できませんでした")
-
-        cookie_header = f"token={token_value}"
         api_url = "http://8.209.213.176/api/back/order/importOrderYmx"
         headers = {
-            "Cookie": cookie_header,
+            "Authorization": access_token,
             "Accept": "application/json, text/plain, */*",
         }
 
