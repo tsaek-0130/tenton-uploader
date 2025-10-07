@@ -1,4 +1,5 @@
 import os
+import json
 import dropbox
 import requests
 import time
@@ -32,6 +33,31 @@ def download_latest_file():
         f.write(res.content)
     print(fname)
     return os.path.abspath(fname)
+
+# ==============================
+# 証拠採取ユーティリティ（最小追加）
+# ==============================
+def dump_evidence(page, label: str, save_html: bool = False):
+    """Cookie/URL/HTMLを保存してログに出す（既存動作に影響無し）"""
+    try:
+        safe_label = label.replace(" ", "_")
+        cookies = page.context.cookies()
+        names = [c.get("name", "") for c in cookies]
+        print(f"🧾 Evidence[{label}] cookie_count={len(cookies)} names={names}")
+        print(f"🧭 Evidence[{label}] url={page.url}")
+
+        with open(f"cookies_{safe_label}.json", "w", encoding="utf-8") as f:
+            json.dump(cookies, f, ensure_ascii=False, indent=2)
+
+        if save_html:
+            html = page.content()
+            with open(f"html_{safe_label}.html", "w", encoding="utf-8") as f:
+                f.write(html)
+            print(f"💾 Evidence[{label}] saved: cookies_{safe_label}.json , html_{safe_label}.html")
+        else:
+            print(f"💾 Evidence[{label}] saved: cookies_{safe_label}.json")
+    except Exception as e:
+        print(f"⚠️ Evidence dump failed ({label}): {e}")
 
 # ==============================
 # Playwright ユーティリティ
@@ -142,6 +168,9 @@ def main():
         page.wait_for_load_state("networkidle", timeout=180000)
         print("✅ ログイン成功")
 
+        # 証拠（ログイン直後）
+        dump_evidence(page, "after_login", save_html=False)
+
         # 言語切替
         try:
             page.click("span.ant-pro-drop-down")
@@ -167,9 +196,13 @@ def main():
         safe_upload_file(page, FILE_PATH)
         print("🌐 現在のURL:", page.url)
 
-        # 403 検知 → 再ログイン処理
+        # 証拠（アップロード直後）
+        dump_evidence(page, "after_upload", save_html=False)
+
+        # 403 検知 → 再ログイン処理（証拠採取を追加）
         if "403" in page.content() or "没有权限访问该页面" in page.content():
             print("⚠️ 403 ページを検出（セッション切れの可能性）。再ログインを試みます...")
+            dump_evidence(page, "on_403_detected", save_html=True)
 
             try:
                 # 既存セッション削除
@@ -198,13 +231,16 @@ def main():
                 page.goto("http://8.209.213.176/fundamentalData/goodInfo", timeout=180000)
                 print("✅ アップロード画面へ再遷移完了")
 
+                # 証拠（再ログイン後）
+                dump_evidence(page, "after_relogin", save_html=False)
+
             except Exception as e:
                 raise RuntimeError(f"❌ 再ログイン処理に失敗しました: {e}")
 
-
-
         # 导入ボタン
         if not click_modal_primary_import(page, timeout_sec=60):
+            # 失敗時の証拠も保存
+            dump_evidence(page, "import_button_not_found", save_html=True)
             page.screenshot(path="debug_screenshot_modal.png", full_page=True)
             with open("debug_modal.html", "w", encoding="utf-8") as f:
                 f.write(page.content())
@@ -240,6 +276,7 @@ def main():
             page.wait_for_selector("input[type='checkbox']", state="visible", timeout=60000)
             print("✅ 一覧表示を検出（checkboxあり）")
         except Exception:
+            dump_evidence(page, "list_not_rendered", save_html=True)
             page.screenshot(path="debug_screenshot_list.png", full_page=True)
             with open("debug_list.html", "w", encoding="utf-8") as f:
                 f.write(page.content())
