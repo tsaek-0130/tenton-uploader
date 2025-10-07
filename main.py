@@ -77,16 +77,32 @@ def select_dropdown_by_index(page, dropdown_index, option_index):
 
 
 def safe_upload_file(page, file_path: str, timeout=60000):
-    """hiddenな<input type='file'>にも対応して直接アップロード"""
-    print("⏳ ファイルアップロード要素を探索中...")
-    page.wait_for_selector("input[type='file']", state="attached", timeout=timeout)
-    input_elem = page.query_selector("input[type='file']")
-    if not input_elem:
-        raise RuntimeError("❌ input[type='file'] が見つかりませんでした。")
+    """Ant Design Upload対応：Reactイベントを経由してファイル選択"""
+    print("⏳ アップロードボタンを探索中...")
+    # 「アップロード」ボタンをクリック（hidden inputをReactが生成する）
+    upload_trigger = page.query_selector(".ant-upload") or page.query_selector("button.ant-btn")
+    if not upload_trigger:
+        raise RuntimeError("❌ アップロードトリガーが見つかりません。")
+
+    upload_trigger.click()
+    print("✅ アップロードボタンをクリック（Reactのinput生成を誘発）")
+
+    # 生成されたinput[type=file]を待機
+    input_elem = page.wait_for_selector("input[type='file']", timeout=timeout)
     html_preview = input_elem.evaluate("el => el.outerHTML")
     print(f"🔍 inputタグHTML: {html_preview}")
+
+    # ファイルをセット（ReactのonChangeが発火）
     input_elem.set_input_files(file_path)
-    print("✅ ファイルアップロード成功（hidden input対応）")
+    print("✅ ファイルを選択（onChange発火）")
+
+    # アップロード完了を待機
+    try:
+        page.wait_for_selector(".ant-upload-list-item", timeout=30000)
+        print("✅ アップロード完了を検出（.ant-upload-list-item出現）")
+    except Exception:
+        print("⚠️ アップロード完了を検出できません（非同期遅延の可能性）")
+
 
 def click_modal_primary_import(page, timeout_sec=60):
     print("⏳ 导入ボタンをリトライ探索中...")
