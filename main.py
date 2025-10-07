@@ -54,13 +54,27 @@ def select_dropdown_by_index(page, dropdown_index, option_index):
     dropdowns = page.query_selector_all("div.ant-select")
     if len(dropdowns) <= dropdown_index:
         raise RuntimeError(f"ドロップダウン index={dropdown_index} が見つかりません")
+
     dropdowns[dropdown_index].click()
-    safe_wait_selector(page, "li[role='option']")
-    options = page.query_selector_all("li[role='option']")
-    if len(options) <= option_index:
-        raise RuntimeError(f"ドロップダウン{dropdown_index} に option {option_index} がありません (len={len(options)})")
-    options[option_index].click()
-    print(f"✅ ドロップダウン{dropdown_index} → option[{option_index}] を選択")
+    print(f"🕓 ドロップダウン{dropdown_index} をクリック、選択肢表示待機中...")
+
+    # リストが安定して出現するまで最大10回リトライ
+    for attempt in range(10):
+        try:
+            safe_wait_selector(page, "div.ant-select-dropdown li[role='option']", timeout=2000)
+            options = page.query_selector_all("div.ant-select-dropdown li[role='option']")
+            if len(options) > option_index:
+                options[option_index].hover()  # hoverで描画安定させる
+                time.sleep(0.2)
+                options[option_index].click()
+                print(f"✅ ドロップダウン{dropdown_index} → option[{option_index}] を選択（試行{attempt+1}回目）")
+                return
+        except Exception as e:
+            print(f"⚠️ ドロップダウン選択失敗（{attempt+1}回目）: {e}")
+            time.sleep(0.5)
+
+    raise RuntimeError(f"❌ ドロップダウン{dropdown_index} の option[{option_index}] 選択に失敗（全試行終了）")
+
 
 def safe_upload_file(page, file_path: str, timeout=60000):
     """hiddenな<input type='file'>にも対応して直接アップロード"""
