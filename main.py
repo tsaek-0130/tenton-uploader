@@ -142,8 +142,8 @@ def main():
         safe_click_by_index(page, "button.ant-btn-primary", 0)
         print("✅ アップロード画面表示確認")
 
-        select_dropdown_by_index(page, 0, 0)
-        select_dropdown_by_index(page, 1, 0)
+        select_dropdown_by_index(page, 0, 0)  # 店铺类型
+        select_dropdown_by_index(page, 1, 0)  # 店铺名称
 
         safe_click_by_index(page, "button.ant-btn", 0)
         print("✅ 上传ボタン押下")
@@ -159,15 +159,15 @@ def main():
         access_token = access_token.strip('"')
         print(f"✅ Access-Token取得成功: {access_token[:20]}...")
 
-        # --- ✅ API送信（店铺类型・名称を追加） ---
+        # --- ✅ API送信（正しい構造） ---
         api_url = "http://8.209.213.176/api/back/order/importOrderYmx"
         headers = {
             "Authorization": access_token,
             "Accept": "application/json, text/plain, */*",
         }
         data = {
-            "shopType": "亚马逊",
-            "shopName": "アイプロダクト"
+            "type": "1",  # 店铺类型 (1 = 亚马逊)
+            "shopId": "6a7aaaf6342c40879974a8e9138e3b3b"  # 店铺名称 (アイプロダクト)
         }
 
         print("📤 サーバーに直接POST送信中...")
@@ -179,7 +179,7 @@ def main():
         print("📄 レスポンス内容:", res.text[:500])
 
         if res.status_code == 200:
-            print("✅ アップロード成功（403・401完全回避）")
+            print("✅ アップロード成功（403・401完全回避・店铺类型OK）")
         else:
             print("❌ アップロード失敗。レスポンスを確認してください。")
 
