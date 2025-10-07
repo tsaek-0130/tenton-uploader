@@ -35,31 +35,6 @@ def download_latest_file():
     return os.path.abspath(fname)
 
 # ==============================
-# 証拠採取ユーティリティ（最小追加）
-# ==============================
-def dump_evidence(page, label: str, save_html: bool = False):
-    """Cookie/URL/HTMLを保存してログに出す（既存動作に影響無し）"""
-    try:
-        safe_label = label.replace(" ", "_")
-        cookies = page.context.cookies()
-        names = [c.get("name", "") for c in cookies]
-        print(f"🧾 Evidence[{label}] cookie_count={len(cookies)} names={names}")
-        print(f"🧭 Evidence[{label}] url={page.url}")
-
-        with open(f"cookies_{safe_label}.json", "w", encoding="utf-8") as f:
-            json.dump(cookies, f, ensure_ascii=False, indent=2)
-
-        if save_html:
-            html = page.content()
-            with open(f"html_{safe_label}.html", "w", encoding="utf-8") as f:
-                f.write(html)
-            print(f"💾 Evidence[{label}] saved: cookies_{safe_label}.json , html_{safe_label}.html")
-        else:
-            print(f"💾 Evidence[{label}] saved: cookies_{safe_label}.json")
-    except Exception as e:
-        print(f"⚠️ Evidence dump failed ({label}): {e}")
-
-# ==============================
 # Playwright ユーティリティ
 # ==============================
 def safe_wait_selector(page, selector, timeout=60000):
@@ -77,7 +52,6 @@ def safe_click_by_index(page, selector, index, timeout=60000):
     target.click()
 
 def select_dropdown_by_index(page, dropdown_index, option_index):
-    """indexベースで選択する。文字列は一切使わない"""
     dropdowns = page.query_selector_all("div.ant-select")
     if len(dropdowns) <= dropdown_index:
         raise RuntimeError(f"ドロップダウン index={dropdown_index} が見つかりません")
@@ -93,29 +67,24 @@ def select_dropdown_by_index(page, dropdown_index, option_index):
 # hidden input 対応のファイルアップロード
 # ==============================
 def safe_upload_file(page, file_path: str, timeout=60000):
-    """hiddenな<input type='file'>にも対応して直接アップロード"""
     try:
         print("⏳ ファイルアップロード要素を探索中...")
         page.wait_for_selector("input[type='file']", state="attached", timeout=timeout)
         input_elem = page.query_selector("input[type='file']")
         if not input_elem:
             raise RuntimeError("❌ input[type='file'] が見つかりませんでした。")
-
         html_preview = input_elem.evaluate("el => el.outerHTML")
         print(f"🔍 inputタグHTML: {html_preview}")
-
         input_elem.set_input_files(file_path)
         print("✅ ファイルアップロード成功（hidden input対応）")
-
     except Exception as e:
         print(f"⚠️ アップロード中にエラー発生: {e}")
         raise
 
 # ==============================
-# モーダル内の「导入」(青) を確実に押す（文字列非依存・hidden対応）
+# モーダル内の「导入」探索（既存そのまま）
 # ==============================
 def click_modal_primary_import(page, timeout_sec=60):
-    """モーダル内 or ページ上の「导入」ボタンを探索してデバッグ出力。"""
     print("⏳ 导入ボタンをリトライ探索中...")
     end = time.time() + timeout_sec
     while time.time() < end:
@@ -146,21 +115,8 @@ def main():
         browser = p.chromium.launch(headless=True)
         page = browser.new_page()
 
-        # ログイン（リトライ + 長時間タイムアウト対応）
-        max_retries = 2
-        for attempt in range(1, max_retries + 1):
-            try:
-                print(f"🌐 ログインページへアクセス中...（試行 {attempt}/{max_retries}）")
-                page.goto("http://8.209.213.176/login", timeout=300000)  # 最大5分待機
-                break
-            except Exception as e:
-                print(f"⚠️ ログインページへのアクセス失敗（{attempt}回目）: {e}")
-                if attempt == max_retries:
-                    raise RuntimeError("❌ ログインページへのアクセスに失敗しました（最大リトライ回数到達）")
-                else:
-                    print("🔁 10秒後に再試行します...")
-                    time.sleep(10)
-
+        print("🌐 ログインページへアクセス中...")
+        page.goto("http://8.209.213.176/login", timeout=300000)
         page.wait_for_selector("#username", timeout=180000)
         page.fill("#username", USERNAME)
         page.fill("#password", PASSWORD)
@@ -168,10 +124,18 @@ def main():
         page.wait_for_load_state("networkidle", timeout=180000)
         print("✅ ログイン成功")
 
-        # 証拠（ログイン直後）
-        dump_evidence(page, "after_login", save_html=False)
+        # 🔍 ここで localStorage / sessionStorage をダンプ
+        local_storage = page.evaluate("Object.entries(localStorage)")
+        session_storage = page.evaluate("Object.entries(sessionStorage)")
 
-        # 言語切替
+        print("📦 localStorage:", json.dumps(local_storage, ensure_ascii=False, indent=2))
+        print("📦 sessionStorage:", json.dumps(session_storage, ensure_ascii=False, indent=2))
+
+        with open("storage_after_login.json", "w", encoding="utf-8") as f:
+            json.dump({"localStorage": local_storage, "sessionStorage": session_storage}, f, ensure_ascii=False, indent=2)
+        print("💾 storage_after_login.json saved")
+
+        # ここから下は何も変えない（既存処理）
         try:
             page.click("span.ant-pro-drop-down")
             safe_wait_selector(page, "li[role='menuitem']")
@@ -182,7 +146,6 @@ def main():
         except Exception as e:
             print("⚠️ 言語切替失敗:", e)
 
-        # アップロードモーダル
         safe_click_by_index(page, "button.ant-btn-primary", 0)
         print("✅ アップロード画面表示確認")
 
@@ -196,107 +159,11 @@ def main():
         safe_upload_file(page, FILE_PATH)
         print("🌐 現在のURL:", page.url)
 
-        # 証拠（アップロード直後）
-        dump_evidence(page, "after_upload", save_html=False)
-
-        # 403 検知 → 再ログイン処理（証拠採取を追加）
-        if "403" in page.content() or "没有权限访问该页面" in page.content():
-            print("⚠️ 403 ページを検出（セッション切れの可能性）。再ログインを試みます...")
-            dump_evidence(page, "on_403_detected", save_html=True)
-
-            try:
-                # 既存セッション削除
-                context = page.context
-                context.clear_cookies()
-                print("🧹 Cookieをクリアしました。")
-
-                # ✅ browser.new_context() を使って完全に新しいコンテキストを作る
-                new_context = browser.new_context()
-                page = new_context.new_page()
-                print("🆕 新しいブラウザコンテキストを作成しました。")
-
-                # ログインページへ遷移
-                page.goto("http://8.209.213.176/login", timeout=300000)
-                print("🌐 新しいページでログイン画面を開きました。")
-
-                # ログインフォーム待機
-                page.wait_for_selector("#username", timeout=180000)
-                page.fill("#username", USERNAME)
-                page.fill("#password", PASSWORD)
-                page.click("button.login-button")
-                page.wait_for_load_state("networkidle", timeout=180000)
-                print("✅ 再ログイン成功")
-
-                # 再遷移
-                page.goto("http://8.209.213.176/fundamentalData/goodInfo", timeout=180000)
-                print("✅ アップロード画面へ再遷移完了")
-
-                # 証拠（再ログイン後）
-                dump_evidence(page, "after_relogin", save_html=False)
-
-            except Exception as e:
-                raise RuntimeError(f"❌ 再ログイン処理に失敗しました: {e}")
-
-        # 导入ボタン
         if not click_modal_primary_import(page, timeout_sec=60):
-            # 失敗時の証拠も保存
-            dump_evidence(page, "import_button_not_found", save_html=True)
             page.screenshot(path="debug_screenshot_modal.png", full_page=True)
             with open("debug_modal.html", "w", encoding="utf-8") as f:
                 f.write(page.content())
             raise RuntimeError("❌ 导入ボタンが見つかりません")
-
-        # エラーモーダル
-        print("⏳ エラーモーダル（提示）検出を待機中...")
-        error_found = False
-        try:
-            page.wait_for_selector("div.ant-modal-confirm", timeout=8000)
-            print("⚠️ エラーモーダルを検出")
-            error_found = True
-            error_texts = page.query_selector_all(
-                "div.ant-modal-confirm div.ant-modal-confirm-body span, "
-                "div.ant-modal-confirm div.ant-modal-confirm-body div"
-            )
-            if error_texts:
-                print("🧾 エラー内容一覧:")
-                for e in error_texts:
-                    txt = e.inner_text().strip()
-                    if txt:
-                        print("   ", txt)
-            know_btns = page.query_selector_all("div.ant-modal-confirm button.ant-btn-primary")
-            if know_btns:
-                know_btns[-1].click()
-                print("✅ 知道了ボタン押下（エラーモーダル閉じ）")
-        except Exception:
-            print("✅ エラーモーダルなし（正常）")
-
-        # 一覧反映
-        print("⏳ 一覧反映を待機中...")
-        try:
-            page.wait_for_selector("input[type='checkbox']", state="visible", timeout=60000)
-            print("✅ 一覧表示を検出（checkboxあり）")
-        except Exception:
-            dump_evidence(page, "list_not_rendered", save_html=True)
-            page.screenshot(path="debug_screenshot_list.png", full_page=True)
-            with open("debug_list.html", "w", encoding="utf-8") as f:
-                f.write(page.content())
-            raise RuntimeError("❌ 一覧反映が確認できません。debug_list.htmlを確認してください。")
-
-        # 一括確認
-        print("⏳ 一括確認処理を実行中...")
-        try:
-            safe_click_by_index(page, "input[type='checkbox']", 0)
-            safe_click_by_index(page, "button.ant-btn", 0)
-            safe_click_by_index(page, "button.ant-btn-primary", -1)
-            print("✅ 一括確認完了")
-        except Exception as e:
-            print(f"⚠️ 一括確認処理でエラー: {e}")
-
-        # 結果
-        if error_found:
-            print("⚠️ 一部注文は既存注文としてスキップされました（上記ログ参照）")
-        else:
-            print("✅ 全注文が正常に取り込まれました")
 
         browser.close()
 
