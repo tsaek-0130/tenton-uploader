@@ -166,8 +166,8 @@ def main():
             "Accept": "application/json, text/plain, */*",
         }
         data = {
-            "storeType": "亚马逊",
-            "storeCode": "アイプロダクト"
+            "shopType": "亚马逊",
+            "shopName": "アイプロダクト"
         }
 
         print("📤 サーバーに直接POST送信中...")
