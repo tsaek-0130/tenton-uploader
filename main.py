@@ -96,6 +96,9 @@ def login_and_save_state(browser, username, password):
     page.fill("#password", password)
     page.click("button.login-button")
     page.wait_for_load_state("networkidle", timeout=180000)
+    # ここ追加👇
+    local_data = page.evaluate("() => JSON.stringify(window.localStorage)")
+    print("💾 localStorage内容:", local_data)
     print("✅ ログイン成功、state.jsonへ保存中...")
     context.storage_state(path=STATE_FILE)
     context.close()
