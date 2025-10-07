@@ -78,28 +78,29 @@ def select_dropdown_by_index(page, dropdown_index, option_index):
 
 def safe_upload_file(page, file_path: str, timeout=60000):
     """
-    アップロードモーダル内のinput[type=file]に直接ファイルをセット
+    アップロードモーダル内のhidden inputに直接ファイルをセット
     """
     print("⏳ ファイルアップロード要素を探索中...")
 
-    # モーダル内のinput[type=file]を待機
-    input_elem = page.wait_for_selector(".ant-upload input[type='file']", timeout=timeout)
+    # hidden状態でもOKにする（visible待ちではなく、DOMに存在するのを待つ）
+    input_elem = page.wait_for_selector(".ant-upload input[type='file']", state="attached", timeout=timeout)
     if not input_elem:
         raise RuntimeError("❌ ファイル選択inputが見つかりません")
 
     html_preview = input_elem.evaluate("el => el.outerHTML")
     print(f"🔍 inputタグHTML: {html_preview}")
 
-    # hiddenでも直接アップロード可能
+    # hiddenでもset可能（Ant Design Upload対応）
     input_elem.set_input_files(file_path)
     print("✅ ファイルを選択完了")
 
-    # アップロード完了待機
+    # アップロード結果（リスト表示）待機
     try:
-        page.wait_for_selector(".ant-list-item", timeout=30000)
+        page.wait_for_selector(".ant-list-item", state="attached", timeout=30000)
         print("✅ アップロードリスト表示検出（アップロード完了）")
     except Exception:
         print("⚠️ アップロード完了を検出できず（遅延の可能性）")
+
 
 
 
