@@ -178,6 +178,10 @@ def main():
         # アップロードモーダル → ドロップダウン選択
         safe_click_by_index(page, "button.ant-btn-primary", 0)
         print("✅ アップロード画面表示確認")
+        with open("debug_upload_modal.html", "w", encoding="utf-8") as f:
+            f.write(page.content())
+        print("💾 debug_upload_modal.html を保存しました（アップロードモーダルHTML）")
+
 
         select_dropdown_by_index(page, 0, 0)
         select_dropdown_by_index(page, 1, 0)
