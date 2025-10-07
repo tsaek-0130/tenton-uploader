@@ -146,12 +146,16 @@ def main():
 
         # 🍪 Cookieを取得して直接API叩く
         print("🍪 Cookie取得中...")
-        cookies = context.cookies()
-        cookie_header = "; ".join([f"{c['name']}={c['value']}" for c in cookies])
+
+        # ページ上から document.cookie を直接取得（確実に）
+        cookie_header = page.evaluate("document.cookie")
         print(f"Cookie: {cookie_header}")
 
         api_url = "http://8.209.213.176/api/back/order/importOrderYmx"
-        headers = {"Cookie": cookie_header}
+        headers = {
+            "Cookie": cookie_header,
+            "Accept": "application/json, text/plain, */*",
+        }
 
         print("📤 サーバーに直接POST送信中...")
         with open(FILE_PATH, "rb") as f:
@@ -160,6 +164,7 @@ def main():
 
         print("📡 レスポンスコード:", res.status_code)
         print("📄 レスポンス内容:", res.text[:500])
+
 
         if res.status_code == 200:
             print("✅ アップロード成功（403回避）")
