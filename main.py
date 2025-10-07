@@ -159,16 +159,21 @@ def main():
         access_token = access_token.strip('"')
         print(f"✅ Access-Token取得成功: {access_token[:20]}...")
 
+        # --- ✅ API送信（店铺类型・名称を追加） ---
         api_url = "http://8.209.213.176/api/back/order/importOrderYmx"
         headers = {
             "Authorization": access_token,
             "Accept": "application/json, text/plain, */*",
         }
+        data = {
+            "storeType": "亚马逊",
+            "storeCode": "アイプロダクト"
+        }
 
         print("📤 サーバーに直接POST送信中...")
         with open(FILE_PATH, "rb") as f:
             files = {"file": (os.path.basename(FILE_PATH), f, "text/plain")}
-            res = requests.post(api_url, headers=headers, files=files)
+            res = requests.post(api_url, headers=headers, data=data, files=files)
 
         print("📡 レスポンスコード:", res.status_code)
         print("📄 レスポンス内容:", res.text[:500])
