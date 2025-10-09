@@ -8,6 +8,7 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v3
 
@@ -24,7 +25,7 @@ jobs:
 
       - name: Install Playwright browsers
         run: |
-          python -m playwright install --with-deps
+          python -m playwright install --with-deps chromium
 
       - name: Run script
         env:
@@ -33,9 +34,11 @@ jobs:
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
           TENTON_USER: ${{ secrets.TENTON_USER }}
           TENTON_PASS: ${{ secrets.TENTON_PASS }}
+          CHATWORK_TOKEN: ${{ secrets.CHATWORK_TOKEN }}      # ← 追加！
+          CHATWORK_ROOM_ID: ${{ secrets.CHATWORK_ROOM_ID }}  # ← 追加！
         run: python main.py
 
-      # ✅ 修正版：v4に更新
+      # ✅ デバッグログ収集（失敗時のみ）
       - name: Upload debug artifacts
         if: failure()
         uses: actions/upload-artifact@v4
