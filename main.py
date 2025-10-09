@@ -142,29 +142,36 @@ def main():
             if res_list.status_code != 200:
                 print(f"❌ 注文一覧取得失敗: {res_list.status_code}")
             else:
-                try:
-                    data = res_list.json()
-                except Exception:
-                    print("⚠️ JSON解析失敗。テキストを直接パースします。")
-                    data = json.loads(res_list.text)
+                raw_data = res_list.text
 
-                # もし result が文字列だった場合 → 再デコード
-                if isinstance(data.get("result"), str):
+                # --- 二重エンコード対応 ---
+                try:
+                    data = json.loads(raw_data)
+                    while isinstance(data, str):  # 中身が文字列なら何回でもデコード
+                        data = json.loads(data)
+                except Exception as e:
+                    print(f"❌ JSONデコードに失敗: {e}")
+                    data = {}
+
+                # --- records抽出 ---
+                result = data.get("result", {})
+                if isinstance(result, str):
                     try:
-                        data["result"] = json.loads(data["result"])
+                        result = json.loads(result)
                     except Exception:
                         print("⚠️ result の再デコードに失敗しました。")
 
-                records = data.get("result", {}).get("records", [])
+                records = result.get("records", [])
                 if isinstance(records, str):
                     try:
                         records = json.loads(records)
                     except Exception:
                         print("⚠️ records の再デコードに失敗しました。")
 
+                # --- ID抽出 ---
                 order_ids = [r["id"] for r in records if isinstance(r, dict) and r.get("id")]
-
                 print(f"📦 一括確認対象ID数: {len(order_ids)}")
+
                 if not order_ids:
                     print("⚠️ 対象IDがありません。スキップします。")
                 else:
@@ -197,6 +204,7 @@ def main():
 
         except Exception as e:
             print(f"❌ 一括確認フェーズ中に例外発生: {e}")
+
 
 
         browser.close()
