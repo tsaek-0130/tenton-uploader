@@ -141,66 +141,65 @@ def main():
 
             if res_list.status_code != 200:
                 print(f"❌ 注文一覧取得失敗: {res_list.status_code}")
-            else:
-                raw_data = res_list.text
+                browser.close()
+                return
 
-                # --- 二重エンコード対応 ---
+            # --- JSONを安全にパース ---
+            try:
+                data = res_list.json()
+                if not isinstance(data, dict):
+                    raise ValueError("JSONではなく文字列形式")
+            except Exception:
                 try:
-                    data = json.loads(raw_data)
-                    while isinstance(data, str):  # 中身が文字列なら何回でもデコード
-                        data = json.loads(data)
-                except Exception as e:
-                    print(f"❌ JSONデコードに失敗: {e}")
-                    data = {}
+                    data = json.loads(res_list.text)
+                except Exception:
+                    print("❌ 注文一覧レスポンスのJSON解析に失敗しました。内容を出力します:")
+                    print(res_list.text[:500])
+                    browser.close()
+                    return
 
-                # --- records抽出 ---
-                result = data.get("result", {})
-                if isinstance(result, str):
-                    try:
-                        result = json.loads(result)
-                    except Exception:
-                        print("⚠️ result の再デコードに失敗しました。")
-
+            # --- records抽出 ---
+            result = data.get("result")
+            if isinstance(result, dict):
                 records = result.get("records", [])
-                if isinstance(records, str):
+            else:
+                print("⚠️ resultがdictではありません。構造を確認してください。")
+                print(f"resultの型: {type(result)}")
+                browser.close()
+                return
+
+            order_ids = [r["id"] for r in records if isinstance(r, dict) and r.get("id")]
+            print(f"📦 一括確認対象ID数: {len(order_ids)}")
+
+            if not order_ids:
+                print("⚠️ 対象IDがありません。スキップします。")
+            else:
+                confirm_url = "http://8.209.213.176/api/back/orderManagement/orderInfo/batchConfirmation"
+                confirm_res = requests.post(
+                    confirm_url,
+                    headers={
+                        "Authorization": access_token,
+                        "Accept": "application/json, text/plain, */*",
+                        "Content-Type": "application/json",
+                    },
+                    json=order_ids,
+                    timeout=120,
+                )
+
+                print("📡 一括確認レスポンスコード:", confirm_res.status_code)
+                print("📄 内容:", confirm_res.text[:500])
+
+                if confirm_res.status_code == 200:
                     try:
-                        records = json.loads(records)
+                        body = confirm_res.json()
                     except Exception:
-                        print("⚠️ records の再デコードに失敗しました。")
-
-                # --- ID抽出 ---
-                order_ids = [r["id"] for r in records if isinstance(r, dict) and r.get("id")]
-                print(f"📦 一括確認対象ID数: {len(order_ids)}")
-
-                if not order_ids:
-                    print("⚠️ 対象IDがありません。スキップします。")
-                else:
-                    confirm_url = "http://8.209.213.176/api/back/orderManagement/orderInfo/batchConfirmation"
-                    confirm_res = requests.post(
-                        confirm_url,
-                        headers={
-                            "Authorization": access_token,
-                            "Accept": "application/json, text/plain, */*",
-                            "Content-Type": "application/json",
-                        },
-                        json=order_ids,
-                        timeout=120,
-                    )
-
-                    print("📡 一括確認レスポンスコード:", confirm_res.status_code)
-                    print("📄 内容:", confirm_res.text[:500])
-
-                    if confirm_res.status_code == 200:
-                        try:
-                            body = confirm_res.json()
-                        except Exception:
-                            body = {}
-                        if body.get("code") == 10000:
-                            print("✅ 一括確認 成功！（エラーなし）")
-                        else:
-                            print(f"⚠️ 一括確認エラー: {body.get('msg')}")
+                        body = {}
+                    if body.get("code") == 10000:
+                        print("✅ 一括確認 成功！（エラーなし）")
                     else:
-                        print("❌ 一括確認API呼び出し失敗")
+                        print(f"⚠️ 一括確認エラー: {body.get('msg')}")
+                else:
+                    print("❌ 一括確認API呼び出し失敗")
 
         except Exception as e:
             print(f"❌ 一括確認フェーズ中に例外発生: {e}")
