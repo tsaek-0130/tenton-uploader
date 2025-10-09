@@ -8,6 +8,35 @@ from playwright.sync_api import sync_playwright
 DROPBOX_PATH = "/tenton"
 STATE_FILE = "state.json"
 
+# --- Chatwork通知 ---
+def notify_chatwork(report_time, upload_log, confirm_log):
+    token = os.environ.get("CHATWORK_TOKEN")
+    room_id = os.environ.get("CHATWORK_ROOM_ID")
+    if not token or not room_id:
+        print("⚠️ Chatwork通知スキップ（環境変数未設定）")
+        return
+
+    url = f"https://api.chatwork.com/v2/rooms/{room_id}/messages"
+    headers = {"X-ChatWorkToken": token}
+    body = f"""🏗️【テントン自動処理レポート】
+
+📦 対象データ：
+Amazon注文レポート作成時刻：{report_time}
+
+📤 アップロード結果：
+{upload_log}
+
+🚀 一括確認結果：
+{confirm_log}
+
+⏰ 実行完了：{time.strftime('%Y-%m-%d %H:%M:%S')}
+"""
+    try:
+        res = requests.post(url, headers=headers, data={"body": body})
+        print(f"📨 Chatwork通知送信結果: {res.status_code}")
+    except Exception as e:
+        print(f"❌ Chatwork通知エラー: {e}")
+
 # --- Dropbox 認証 ---
 def refresh_access_token():
     url = "https://api.dropboxapi.com/oauth2/token"
@@ -31,7 +60,7 @@ def download_latest_file():
     with open(fname, "wb") as f:
         f.write(res.content)
     print(fname)
-    return os.path.abspath(fname)
+    return os.path.abspath(fname), latest.name  # ← ファイル名も返す
 
 # --- Playwright util ---
 def safe_wait_selector(page, selector, timeout=60000):
@@ -62,75 +91,65 @@ def login_and_save_state(browser, username, password):
 
 # --- メイン ---
 def main():
-    FILE_PATH = download_latest_file()
+    FILE_PATH, FILE_NAME = download_latest_file()
+    report_time = FILE_NAME.replace(".txt", "").replace("Downloaded: ", "")
     USERNAME = os.environ["TENTON_USER"]
     PASSWORD = os.environ["TENTON_PASS"]
 
+    upload_log = ""
+    confirm_log = ""
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-
-        # セッション復元 or ログイン
-        if os.path.exists(STATE_FILE):
-            print("✅ 保存済みセッションを使用")
-            context = browser.new_context(storage_state=STATE_FILE)
-        else:
-            login_and_save_state(browser, USERNAME, PASSWORD)
-            context = browser.new_context(storage_state=STATE_FILE)
-
-        page = context.new_page()
-        page.goto("http://8.209.213.176/fundamentalData/goodInfo", timeout=300000)
-        print("✅ アップロード画面へアクセス完了")
-
-        # --- 言語切替 ---
         try:
-            page.click("span.ant-pro-drop-down")
-            safe_wait_selector(page, "li[role='menuitem']")
-            items = page.query_selector_all("li[role='menuitem']")
-            if len(items) >= 2:
-                items[1].click()
-            print("✅ 言語を日本語に切替")
-        except Exception as e:
-            print("⚠️ 言語切替失敗:", e)
+            # --- セッション復元 or ログイン ---
+            if os.path.exists(STATE_FILE):
+                print("✅ 保存済みセッションを使用")
+                context = browser.new_context(storage_state=STATE_FILE)
+            else:
+                login_and_save_state(browser, USERNAME, PASSWORD)
+                context = browser.new_context(storage_state=STATE_FILE)
 
-        # --- ✅ localStorageからAccess-Token取得 ---
-        print("🔑 localStorageからAccess-Token取得中...")
-        access_token = page.evaluate("() => localStorage.getItem('Access-Token')")
-        if not access_token:
-            raise RuntimeError("❌ localStorageにAccess-Tokenが見つかりませんでした")
+            page = context.new_page()
+            page.goto("http://8.209.213.176/fundamentalData/goodInfo", timeout=300000)
+            print("✅ アップロード画面へアクセス完了")
 
-        access_token = access_token.strip('"')
-        print(f"✅ Access-Token取得成功: {access_token[:20]}...")
+            # --- 言語切替 ---
+            try:
+                page.click("span.ant-pro-drop-down")
+                safe_wait_selector(page, "li[role='menuitem']")
+                items = page.query_selector_all("li[role='menuitem']")
+                if len(items) >= 2:
+                    items[1].click()
+                print("✅ 言語を日本語に切替")
+            except Exception as e:
+                print("⚠️ 言語切替失敗:", e)
 
-        # --- ✅ API送信（导入） ---
-        api_url = "http://8.209.213.176/api/back/order/importOrderYmx"
-        headers = {
-            "Authorization": access_token,
-            "Accept": "application/json, text/plain, */*",
-        }
-        data = {
-            "type": "1",  # 店铺类型 (1 = 亚马逊)
-            "shopId": "6a7aaaf6342c40879974a8e9138e3b3b"  # 店铺名称 (アイプロダクト)
-        }
+            # --- Access-Token取得 ---
+            print("🔑 localStorageからAccess-Token取得中...")
+            access_token = page.evaluate("() => localStorage.getItem('Access-Token')")
+            if not access_token:
+                raise RuntimeError("❌ localStorageにAccess-Tokenが見つかりませんでした")
+            access_token = access_token.strip('"')
+            print(f"✅ Access-Token取得成功: {access_token[:20]}...")
 
-        print("📤 サーバーに直接POST送信中...")
-        with open(FILE_PATH, "rb") as f:
-            files = {"file": (os.path.basename(FILE_PATH), f, "text/plain")}
-            res = requests.post(api_url, headers=headers, data=data, files=files)
+            # --- アップロード ---
+            api_url = "http://8.209.213.176/api/back/order/importOrderYmx"
+            headers = {"Authorization": access_token, "Accept": "application/json, text/plain, */*"}
+            data = {"type": "1", "shopId": "6a7aaaf6342c40879974a8e9138e3b3b"}
 
-        print("📡 レスポンスコード:", res.status_code)
-        print("📄 レスポンス内容:", res.text[:500])
+            print("📤 サーバーに直接POST送信中...")
+            with open(FILE_PATH, "rb") as f:
+                files = {"file": (os.path.basename(FILE_PATH), f, "text/plain")}
+                res = requests.post(api_url, headers=headers, data=data, files=files)
 
-        if res.status_code == 200:
-            print("✅ アップロード成功（403・401完全回避・店铺类型OK）")
-        else:
-            print("❌ アップロード失敗。レスポンスを確認してください。")
+            upload_log = f"HTTP {res.status_code}\n{res.text[:300]}"
+            print("📡 レスポンスコード:", res.status_code)
+            print("📄 レスポンス内容:", res.text[:300])
 
-        # --- ✅ 一括確認フェーズ ---
-        print("🚀 一括確認フェーズ開始...")
-
-        list_url = "http://8.209.213.176/api/back/orderManagement/orderInfo"
-        try:
-            # 👇 POSTに変更
+            # --- 一括確認 ---
+            print("🚀 一括確認フェーズ開始...")
+            list_url = "http://8.209.213.176/api/back/orderManagement/orderInfo"
             res_list = requests.post(
                 list_url,
                 headers={
@@ -138,76 +157,39 @@ def main():
                     "Accept": "application/json, text/plain, */*",
                     "Content-Type": "application/json",
                 },
-                json={"size": 200, "current": 1},  # bodyでページ指定
+                json={"size": 200, "current": 1},
                 timeout=120,
             )
 
             if res_list.status_code != 200:
-                print(f"❌ 注文一覧取得失敗: {res_list.status_code}")
-                print(res_list.text[:500])
-                browser.close()
-                return
-
-            # --- JSONを安全にパース ---
-            try:
-                data = res_list.json()
-            except Exception:
-                print("⚠️ JSONパース失敗、テキスト内容を出力します:")
-                print(res_list.text[:300])
-                browser.close()
-                return
-
-            result = data.get("result")
-            if isinstance(result, str):
-                try:
-                    result = json.loads(result)
-                except Exception as e:
-                    print(f"❌ result のJSONデコードに失敗: {e}")
-                    print(result[:300])
-                    browser.close()
-                    return
-
-            records = result.get("records", [])
-            order_ids = [r["id"] for r in records if isinstance(r, dict) and r.get("id")]
-
-            print(f"📦 一括確認対象ID数: {len(order_ids)}")
-            if not order_ids:
-                print("⚠️ 対象IDがありません。スキップします。")
-                browser.close()
-                return
-
-            # --- 一括確認API呼び出し ---
-            confirm_url = "http://8.209.213.176/api/back/orderManagement/orderInfo/batchConfirmation"
-            confirm_res = requests.post(
-                confirm_url,
-                headers={
-                    "Authorization": access_token,
-                    "Accept": "application/json, text/plain, */*",
-                    "Content-Type": "application/json",
-                },
-                json=order_ids,
-                timeout=120,
-            )
-
-            print("📡 一括確認レスポンスコード:", confirm_res.status_code)
-            print("📄 内容:", confirm_res.text[:500])
-
-            if confirm_res.status_code == 200:
-                try:
-                    body = confirm_res.json()
-                except Exception:
-                    body = {}
-                if body.get("code") == 10000:
-                    print("✅ 一括確認 成功！（エラーなし）")
-                else:
-                    print(f"⚠️ 一括確認エラー: {body.get('msg')}")
+                confirm_log = f"❌ 注文一覧取得失敗: HTTP {res_list.status_code}\n{res_list.text[:200]}"
             else:
-                print("❌ 一括確認API呼び出し失敗")
+                data = res_list.json()
+                result = data.get("result", {})
+                records = result.get("records", [])
+                order_ids = [r.get("id") for r in records if isinstance(r, dict)]
+                if not order_ids:
+                    confirm_log = "⚠️ 一括確認対象なし"
+                else:
+                    confirm_url = "http://8.209.213.176/api/back/orderManagement/orderInfo/batchConfirmation"
+                    confirm_res = requests.post(
+                        confirm_url,
+                        headers={
+                            "Authorization": access_token,
+                            "Accept": "application/json, text/plain, */*",
+                            "Content-Type": "application/json",
+                        },
+                        json=order_ids,
+                        timeout=120,
+                    )
+                    confirm_log = f"HTTP {confirm_res.status_code}\n{confirm_res.text[:300]}"
 
         except Exception as e:
-            print(f"❌ 一括確認フェーズ中に例外発生: {e}")
-
-        browser.close()
+            upload_log = upload_log or f"❌ 例外発生: {e}"
+            confirm_log = confirm_log or "未実施（例外発生により中断）"
+        finally:
+            browser.close()
+            notify_chatwork(report_time, upload_log, confirm_log)
 
 if __name__ == "__main__":
     main()
