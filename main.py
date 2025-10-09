@@ -144,66 +144,63 @@ def main():
                 browser.close()
                 return
 
-            # --- JSONを安全にパース ---
+            # --- JSON安全パース ---
             try:
                 data = res_list.json()
-                if not isinstance(data, dict):
-                    raise ValueError("JSONではなく文字列形式")
             except Exception:
+                data = json.loads(res_list.text)
+
+            result = data.get("result")
+            # 👇ここで「文字列型ならjson.loads」してdict化
+            if isinstance(result, str):
                 try:
-                    data = json.loads(res_list.text)
-                except Exception:
-                    print("❌ 注文一覧レスポンスのJSON解析に失敗しました。内容を出力します:")
-                    print(res_list.text[:500])
+                    result = json.loads(result)
+                except Exception as e:
+                    print(f"❌ result のJSONデコードに失敗: {e}")
+                    print(result[:300])
                     browser.close()
                     return
 
-            # --- records抽出 ---
-            result = data.get("result")
-            if isinstance(result, dict):
-                records = result.get("records", [])
-            else:
-                print("⚠️ resultがdictではありません。構造を確認してください。")
-                print(f"resultの型: {type(result)}")
+            # --- records 抽出 ---
+            records = result.get("records", [])
+            order_ids = [r["id"] for r in records if isinstance(r, dict) and r.get("id")]
+
+            print(f"📦 一括確認対象ID数: {len(order_ids)}")
+            if not order_ids:
+                print("⚠️ 対象IDがありません。スキップします。")
                 browser.close()
                 return
 
-            order_ids = [r["id"] for r in records if isinstance(r, dict) and r.get("id")]
-            print(f"📦 一括確認対象ID数: {len(order_ids)}")
+            # --- 一括確認API呼び出し ---
+            confirm_url = "http://8.209.213.176/api/back/orderManagement/orderInfo/batchConfirmation"
+            confirm_res = requests.post(
+                confirm_url,
+                headers={
+                    "Authorization": access_token,
+                    "Accept": "application/json, text/plain, */*",
+                    "Content-Type": "application/json",
+                },
+                json=order_ids,
+                timeout=120,
+            )
 
-            if not order_ids:
-                print("⚠️ 対象IDがありません。スキップします。")
-            else:
-                confirm_url = "http://8.209.213.176/api/back/orderManagement/orderInfo/batchConfirmation"
-                confirm_res = requests.post(
-                    confirm_url,
-                    headers={
-                        "Authorization": access_token,
-                        "Accept": "application/json, text/plain, */*",
-                        "Content-Type": "application/json",
-                    },
-                    json=order_ids,
-                    timeout=120,
-                )
+            print("📡 一括確認レスポンスコード:", confirm_res.status_code)
+            print("📄 内容:", confirm_res.text[:500])
 
-                print("📡 一括確認レスポンスコード:", confirm_res.status_code)
-                print("📄 内容:", confirm_res.text[:500])
-
-                if confirm_res.status_code == 200:
-                    try:
-                        body = confirm_res.json()
-                    except Exception:
-                        body = {}
-                    if body.get("code") == 10000:
-                        print("✅ 一括確認 成功！（エラーなし）")
-                    else:
-                        print(f"⚠️ 一括確認エラー: {body.get('msg')}")
+            if confirm_res.status_code == 200:
+                try:
+                    body = confirm_res.json()
+                except Exception:
+                    body = {}
+                if body.get("code") == 10000:
+                    print("✅ 一括確認 成功！（エラーなし）")
                 else:
-                    print("❌ 一括確認API呼び出し失敗")
+                    print(f"⚠️ 一括確認エラー: {body.get('msg')}")
+            else:
+                print("❌ 一括確認API呼び出し失敗")
 
         except Exception as e:
             print(f"❌ 一括確認フェーズ中に例外発生: {e}")
-
 
 
         browser.close()
