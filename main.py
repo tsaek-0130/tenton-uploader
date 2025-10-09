@@ -128,30 +128,36 @@ def main():
         # --- ✅ 一括確認フェーズ ---
         print("🚀 一括確認フェーズ開始...")
 
-        list_url = "http://8.209.213.176/api/back/orderManagement/orderInfo?size=200&current=1"
+        list_url = "http://8.209.213.176/api/back/orderManagement/orderInfo"
         try:
-            res_list = requests.get(
+            # 👇 POSTに変更
+            res_list = requests.post(
                 list_url,
                 headers={
                     "Authorization": access_token,
                     "Accept": "application/json, text/plain, */*",
+                    "Content-Type": "application/json",
                 },
+                json={"size": 200, "current": 1},  # bodyでページ指定
                 timeout=120,
             )
 
             if res_list.status_code != 200:
                 print(f"❌ 注文一覧取得失敗: {res_list.status_code}")
+                print(res_list.text[:500])
                 browser.close()
                 return
 
-            # --- JSON安全パース ---
+            # --- JSONを安全にパース ---
             try:
                 data = res_list.json()
             except Exception:
-                data = json.loads(res_list.text)
+                print("⚠️ JSONパース失敗、テキスト内容を出力します:")
+                print(res_list.text[:300])
+                browser.close()
+                return
 
             result = data.get("result")
-            # 👇ここで「文字列型ならjson.loads」してdict化
             if isinstance(result, str):
                 try:
                     result = json.loads(result)
@@ -161,7 +167,6 @@ def main():
                     browser.close()
                     return
 
-            # --- records 抽出 ---
             records = result.get("records", [])
             order_ids = [r["id"] for r in records if isinstance(r, dict) and r.get("id")]
 
@@ -201,7 +206,6 @@ def main():
 
         except Exception as e:
             print(f"❌ 一括確認フェーズ中に例外発生: {e}")
-
 
         browser.close()
 
