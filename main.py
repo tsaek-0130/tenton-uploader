@@ -125,7 +125,59 @@ def main():
         else:
             print("❌ アップロード失敗。レスポンスを確認してください。")
 
-        # 👇 ここから次フェーズで「一括確認処理」を追加予定 👇
+        # --- ✅ 一括確認フェーズ ---
+        print("🚀 一括確認フェーズ開始...")
+
+        list_url = "http://8.209.213.176/api/back/orderManagement/orderInfo?size=200&current=1"
+        try:
+            res_list = requests.get(
+                list_url,
+                headers={
+                    "Authorization": access_token,
+                    "Accept": "application/json, text/plain, */*",
+                },
+                timeout=120,
+            )
+            if res_list.status_code != 200:
+                print(f"❌ 注文一覧取得失敗: {res_list.status_code}")
+            else:
+                data = res_list.json()
+                records = data.get("result", {}).get("records", [])
+                order_ids = [r["id"] for r in records if r.get("id")]
+
+                print(f"📦 一括確認対象ID数: {len(order_ids)}")
+                if not order_ids:
+                    print("⚠️ 対象IDがありません。スキップします。")
+                else:
+                    confirm_url = "http://8.209.213.176/api/back/orderManagement/orderInfo/batchConfirmation"
+                    confirm_res = requests.post(
+                        confirm_url,
+                        headers={
+                            "Authorization": access_token,
+                            "Accept": "application/json, text/plain, */*",
+                            "Content-Type": "application/json",
+                        },
+                        json=order_ids,
+                        timeout=120,
+                    )
+
+                    print("📡 一括確認レスポンスコード:", confirm_res.status_code)
+                    print("📄 内容:", confirm_res.text[:500])
+
+                    if confirm_res.status_code == 200:
+                        try:
+                            body = confirm_res.json()
+                            if body.get("code") == 10000:
+                                print("✅ 一括確認 成功！")
+                            else:
+                                print(f"⚠️ 一括確認エラー: {body.get('msg')}")
+                        except Exception:
+                            print("⚠️ 一括確認レスポンスのJSON解析に失敗")
+                    else:
+                        print("❌ 一括確認API呼び出し失敗")
+
+        except Exception as e:
+            print(f"❌ 一括確認フェーズ中に例外発生: {e}")
 
         browser.close()
 
