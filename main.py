@@ -138,12 +138,31 @@ def main():
                 },
                 timeout=120,
             )
+
             if res_list.status_code != 200:
                 print(f"❌ 注文一覧取得失敗: {res_list.status_code}")
             else:
-                data = res_list.json()
+                try:
+                    data = res_list.json()
+                except Exception:
+                    print("⚠️ JSON解析失敗。テキストを直接パースします。")
+                    data = json.loads(res_list.text)
+
+                # もし result が文字列だった場合 → 再デコード
+                if isinstance(data.get("result"), str):
+                    try:
+                        data["result"] = json.loads(data["result"])
+                    except Exception:
+                        print("⚠️ result の再デコードに失敗しました。")
+
                 records = data.get("result", {}).get("records", [])
-                order_ids = [r["id"] for r in records if r.get("id")]
+                if isinstance(records, str):
+                    try:
+                        records = json.loads(records)
+                    except Exception:
+                        print("⚠️ records の再デコードに失敗しました。")
+
+                order_ids = [r["id"] for r in records if isinstance(r, dict) and r.get("id")]
 
                 print(f"📦 一括確認対象ID数: {len(order_ids)}")
                 if not order_ids:
@@ -167,17 +186,18 @@ def main():
                     if confirm_res.status_code == 200:
                         try:
                             body = confirm_res.json()
-                            if body.get("code") == 10000:
-                                print("✅ 一括確認 成功！")
-                            else:
-                                print(f"⚠️ 一括確認エラー: {body.get('msg')}")
                         except Exception:
-                            print("⚠️ 一括確認レスポンスのJSON解析に失敗")
+                            body = {}
+                        if body.get("code") == 10000:
+                            print("✅ 一括確認 成功！（エラーなし）")
+                        else:
+                            print(f"⚠️ 一括確認エラー: {body.get('msg')}")
                     else:
                         print("❌ 一括確認API呼び出し失敗")
 
         except Exception as e:
             print(f"❌ 一括確認フェーズ中に例外発生: {e}")
+
 
         browser.close()
 
