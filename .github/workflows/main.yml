@@ -34,11 +34,10 @@ jobs:
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
           TENTON_USER: ${{ secrets.TENTON_USER }}
           TENTON_PASS: ${{ secrets.TENTON_PASS }}
-          CHATWORK_TOKEN: ${{ secrets.CHATWORK_TOKEN }}      # ← 追加！
-          CHATWORK_ROOM_ID: ${{ secrets.CHATWORK_ROOM_ID }}  # ← 追加！
+          CHATWORK_TOKEN: ${{ secrets.CHATWORK_TOKEN }}
+          CHATWORK_ROOM_ID: ${{ secrets.CHATWORK_ROOM_ID }}
         run: python main.py
 
-      # ✅ デバッグログ収集（失敗時のみ）
       - name: Upload debug artifacts
         if: failure()
         uses: actions/upload-artifact@v4
