@@ -1,7 +1,7 @@
 name: Tenton Uploader
 
 on:
-  workflow_dispatch:  # ← 手動実行のみ（スケジュール削除）
+  workflow_dispatch:  # ← これだけ残す！
 
 jobs:
   run:
@@ -22,8 +22,7 @@ jobs:
           pip install --no-cache-dir -r requirements.txt
 
       - name: Install Playwright browsers
-        run: |
-          python -m playwright install --with-deps chromium
+        run: python -m playwright install --with-deps chromium
 
       - name: Run script
         env:
@@ -35,12 +34,3 @@ jobs:
           CHATWORK_TOKEN: ${{ secrets.CHATWORK_TOKEN }}
           CHATWORK_ROOM_ID: ${{ secrets.CHATWORK_ROOM_ID }}
         run: python main.py
-
-      - name: Upload debug artifacts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: debug-files
-          path: |
-            debug*.html
-            debug*.png
