@@ -3,10 +3,24 @@ import json
 import dropbox
 import requests
 import time
+from datetime import datetime, timedelta, timezone
 from playwright.sync_api import sync_playwright
+from googletrans import Translator  # ← 追加
 
 DROPBOX_PATH = "/tenton"
 STATE_FILE = "state.json"
+translator = Translator()
+JST = timezone(timedelta(hours=9))
+
+# --- 翻訳ユーティリティ ---
+def translate_to_japanese(text):
+    if not text:
+        return text
+    try:
+        result = translator.translate(text, src='zh-cn', dest='ja')
+        return result.text
+    except Exception as e:
+        return f"[翻訳失敗: {e}] 原文: {text}"
 
 # --- Chatwork通知 ---
 def notify_chatwork(report_time, upload_log, confirm_log):
@@ -16,6 +30,13 @@ def notify_chatwork(report_time, upload_log, confirm_log):
         print("⚠️ Chatwork通知スキップ（環境変数未設定）")
         return
 
+    # 現在時刻をJSTで
+    now_jst = datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')
+
+    # 翻訳を適用
+    upload_log_jp = translate_to_japanese(upload_log)
+    confirm_log_jp = translate_to_japanese(confirm_log)
+
     url = f"https://api.chatwork.com/v2/rooms/{room_id}/messages"
     headers = {"X-ChatWorkToken": token}
     body = f"""🏗️【テントン自動処理レポート】
@@ -24,12 +45,12 @@ def notify_chatwork(report_time, upload_log, confirm_log):
 Amazon注文レポート作成時刻：{report_time}
 
 📤 アップロード結果：
-{upload_log}
+{upload_log_jp}
 
 🚀 一括確認結果：
-{confirm_log}
+{confirm_log_jp}
 
-⏰ 実行完了：{time.strftime('%Y-%m-%d %H:%M:%S')}
+⏰ 実行完了：{now_jst}（JST）
 """
     try:
         res = requests.post(url, headers=headers, data={"body": body})
@@ -60,7 +81,7 @@ def download_latest_file():
     with open(fname, "wb") as f:
         f.write(res.content)
     print(fname)
-    return os.path.abspath(fname), latest.name  # ← ファイル名も返す
+    return os.path.abspath(fname), latest.name
 
 # --- Playwright util ---
 def safe_wait_selector(page, selector, timeout=60000):
@@ -83,7 +104,6 @@ def login_and_save_state(browser, username, password):
 
     local_data = page.evaluate("() => JSON.stringify(window.localStorage)")
     print("💾 localStorage内容:", local_data)
-
     print("✅ ログイン成功、state.jsonへ保存中...")
     context.storage_state(path=STATE_FILE)
     context.close()
@@ -102,7 +122,7 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         try:
-            # --- セッション復元 or ログイン ---
+            # セッション復元 or ログイン
             if os.path.exists(STATE_FILE):
                 print("✅ 保存済みセッションを使用")
                 context = browser.new_context(storage_state=STATE_FILE)
@@ -114,7 +134,7 @@ def main():
             page.goto("http://8.209.213.176/fundamentalData/goodInfo", timeout=300000)
             print("✅ アップロード画面へアクセス完了")
 
-            # --- 言語切替 ---
+            # 言語切替
             try:
                 page.click("span.ant-pro-drop-down")
                 safe_wait_selector(page, "li[role='menuitem']")
@@ -125,7 +145,7 @@ def main():
             except Exception as e:
                 print("⚠️ 言語切替失敗:", e)
 
-            # --- Access-Token取得 ---
+            # Access Token
             print("🔑 localStorageからAccess-Token取得中...")
             access_token = page.evaluate("() => localStorage.getItem('Access-Token')")
             if not access_token:
@@ -133,7 +153,7 @@ def main():
             access_token = access_token.strip('"')
             print(f"✅ Access-Token取得成功: {access_token[:20]}...")
 
-            # --- アップロード ---
+            # アップロード
             api_url = "http://8.209.213.176/api/back/order/importOrderYmx"
             headers = {"Authorization": access_token, "Accept": "application/json, text/plain, */*"}
             data = {"type": "1", "shopId": "6a7aaaf6342c40879974a8e9138e3b3b"}
@@ -147,7 +167,7 @@ def main():
             print("📡 レスポンスコード:", res.status_code)
             print("📄 レスポンス内容:", res.text[:300])
 
-            # --- 一括確認 ---
+            # 一括確認
             print("🚀 一括確認フェーズ開始...")
             list_url = "http://8.209.213.176/api/back/orderManagement/orderInfo"
             res_list = requests.post(
