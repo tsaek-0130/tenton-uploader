@@ -5,7 +5,7 @@ import requests
 import time
 from datetime import datetime, timedelta, timezone
 from playwright.sync_api import sync_playwright
-from googletrans import Translator  # ← 追加
+from googletrans import Translator
 
 DROPBOX_PATH = "/tenton"
 STATE_FILE = "state.json"
@@ -22,6 +22,29 @@ def translate_to_japanese(text):
     except Exception as e:
         return f"[翻訳失敗: {e}] 原文: {text}"
 
+# --- 結果要約（同一メッセージをグルーピング） ---
+def summarize_orders(raw_text):
+    try:
+        data = json.loads(raw_text)
+        result = data.get("result", {})
+        if not isinstance(result, dict):
+            msg = data.get("msg", raw_text)
+            return translate_to_japanese(msg)
+
+        grouped = {}
+        for order_no, msg in result.items():
+            jp_msg = translate_to_japanese(msg)
+            grouped.setdefault(jp_msg, []).append(order_no)
+
+        lines = []
+        for msg, orders in grouped.items():
+            order_list = ", ".join(orders[:10])
+            more = f" …他{len(orders)-10}件" if len(orders) > 10 else ""
+            lines.append(f"{msg}：{order_list}{more}")
+        return "\n".join(lines)
+    except Exception:
+        return translate_to_japanese(raw_text)
+
 # --- Chatwork通知 ---
 def notify_chatwork(report_time, upload_log, confirm_log):
     token = os.environ.get("CHATWORK_TOKEN")
@@ -30,28 +53,36 @@ def notify_chatwork(report_time, upload_log, confirm_log):
         print("⚠️ Chatwork通知スキップ（環境変数未設定）")
         return
 
-    # 現在時刻をJSTで
     now_jst = datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')
 
-    # 翻訳を適用
-    upload_log_jp = translate_to_japanese(upload_log)
-    confirm_log_jp = translate_to_japanese(confirm_log)
+    # ステータス分類
+    upload_status = "✅ 成功" if "HTTP 200" in upload_log else "❌ 失敗"
+    confirm_status = "✅ 成功" if "HTTP 200" in confirm_log else "❌ 失敗"
 
-    url = f"https://api.chatwork.com/v2/rooms/{room_id}/messages"
-    headers = {"X-ChatWorkToken": token}
+    # 翻訳・要約
+    upload_summary = summarize_orders(upload_log)
+    confirm_summary = summarize_orders(confirm_log)
+
+    # 通知本文
     body = f"""🏗️【テントン自動処理レポート】
 
 📦 対象データ：
 Amazon注文レポート作成時刻：{report_time}
 
 📤 アップロード結果：
-{upload_log_jp}
+{upload_status}
+{upload_summary}
 
 🚀 一括確認結果：
-{confirm_log_jp}
+{confirm_status}
+{confirm_summary}
 
 ⏰ 実行完了：{now_jst}（JST）
 """
+
+    # Chatwork送信
+    url = f"https://api.chatwork.com/v2/rooms/{room_id}/messages"
+    headers = {"X-ChatWorkToken": token}
     try:
         res = requests.post(url, headers=headers, data={"body": body})
         print(f"📨 Chatwork通知送信結果: {res.status_code}")
@@ -163,9 +194,9 @@ def main():
                 files = {"file": (os.path.basename(FILE_PATH), f, "text/plain")}
                 res = requests.post(api_url, headers=headers, data=data, files=files)
 
-            upload_log = f"HTTP {res.status_code}\n{res.text[:300]}"
+            upload_log = f"HTTP {res.status_code}\n{res.text[:500]}"
             print("📡 レスポンスコード:", res.status_code)
-            print("📄 レスポンス内容:", res.text[:300])
+            print("📄 レスポンス内容:", res.text[:500])
 
             # 一括確認
             print("🚀 一括確認フェーズ開始...")
@@ -202,7 +233,7 @@ def main():
                         json=order_ids,
                         timeout=120,
                     )
-                    confirm_log = f"HTTP {confirm_res.status_code}\n{confirm_res.text[:300]}"
+                    confirm_log = f"HTTP {confirm_res.status_code}\n{confirm_res.text[:500]}"
 
         except Exception as e:
             upload_log = upload_log or f"❌ 例外発生: {e}"
