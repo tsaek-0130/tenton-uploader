@@ -1,9 +1,7 @@
 name: Tenton Uploader
 
 on:
-  schedule:
-    - cron: "0 5 * * *"   # 毎日14:00 JST（UTCで5:00）
-  workflow_dispatch:
+  workflow_dispatch:  # ← 手動実行のみ（スケジュール削除）
 
 jobs:
   run:
