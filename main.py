@@ -48,7 +48,10 @@ def summarize_orders(raw_text):
 # --- Chatwork通知 ---
 def notify_chatwork(report_time, upload_log, confirm_log):
     token = os.environ.get("CHATWORK_TOKEN")
-    room_id = os.environ.get("CHATWORK_ROOM_ID")
+    room_id = "366280327"  # 固定ルームID（#!rid366280327）
+    to_account_id = "10110346"  # 脇山友香(Yuka Wakiyama)さん
+    to_display = "脇山友香(Yuka Wakiyama)さん"
+
     if not token or not room_id:
         print("⚠️ Chatwork通知スキップ（環境変数未設定）")
         return
@@ -63,8 +66,9 @@ def notify_chatwork(report_time, upload_log, confirm_log):
     upload_summary = summarize_orders(upload_log)
     confirm_summary = summarize_orders(confirm_log)
 
-    # 通知本文
-    body = f"""🏗️【テントン自動処理レポート】
+    # 通知本文（Toメンション付き）
+    body = f"""[To:{to_account_id}] {to_display}
+🏗️【テントン自動処理レポート】
 
 📦 対象データ：
 Amazon注文レポート作成時刻：{report_time}
@@ -143,7 +147,15 @@ def login_and_save_state(browser, username, password):
 # --- メイン ---
 def main():
     FILE_PATH, FILE_NAME = download_latest_file()
-    report_time = FILE_NAME.replace(".txt", "").replace("Downloaded: ", "")
+
+    # ▼ UTC → JST (+9h) に補正
+    base_name = FILE_NAME.replace(".txt", "").replace("Downloaded: ", "")
+    try:
+        utc_dt = datetime.strptime(base_name, "%Y-%m-%d %H:%M:%S")
+        report_time = (utc_dt + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        report_time = base_name
+
     USERNAME = os.environ["TENTON_USER"]
     PASSWORD = os.environ["TENTON_PASS"]
 
