@@ -212,6 +212,7 @@ def main():
 
             # 一括確認
             print("🚀 一括確認フェーズ開始...")
+            time.sleep(40)  # 登録反映待機（非同期登録の完了を待つ）
             list_url = "http://8.209.213.176/api/back/orderManagement/orderInfo"
             res_list = requests.post(
                 list_url,
