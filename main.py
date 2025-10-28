@@ -231,7 +231,13 @@ def main():
                 data = res_list.json()
                 result = data.get("result", {})
                 records = result.get("records", [])
+                
+                # ✅ ここにログを追加
+                print(f"🧾 一括確認前のorderInfo件数: {len(records)}")
+
                 order_ids = [r.get("id") for r in records if isinstance(r, dict)]
+                print(f"🆔 一括確認対象ID: {order_ids}")  # ✅ ここも追加
+                
                 if not order_ids:
                     confirm_log = "⚠️ 一括確認対象なし"
                 else:
