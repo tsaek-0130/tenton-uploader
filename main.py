@@ -235,6 +235,7 @@ def main():
                     continue
 
                 data = res_list.json()
+                print(json.dumps(data, ensure_ascii=False, indent=2))
                 records = data.get("result", {}).get("records", [])
                 record_count = len(records)
                 print(f"⏳ 反映チェック {i+1}/9: {record_count}件")
