@@ -210,45 +210,58 @@ def main():
             print("📡 レスポンスコード:", res.status_code)
             print("📄 レスポンス内容:", res.text[:500])
 
-            # 一括確認
+            # --- 一括確認フェーズ（改良版） ---
             print("🚀 一括確認フェーズ開始...")
-            time.sleep(40)  # 登録反映待機（非同期登録の完了を待つ）
-            list_url = "http://8.209.213.176/api/back/orderManagement/orderInfo"
-            res_list = requests.post(
-                list_url,
-                headers={
-                    "Authorization": access_token,
-                    "Accept": "application/json, text/plain, */*",
-                    "Content-Type": "application/json",
-                },
-                json={"size": 200, "current": 1},
-                timeout=120,
-            )
 
-            if res_list.status_code != 200:
-                confirm_log = f"❌ 注文一覧取得失敗: HTTP {res_list.status_code}\n{res_list.text[:200]}"
-            else:
+            list_url = "http://8.209.213.176/api/back/orderManagement/orderInfo"
+            headers_common = {
+                "Authorization": access_token,
+                "Accept": "application/json, text/plain, */*",
+                "Content-Type": "application/json",
+            }
+
+            prev_count = -1
+            records = []
+            for i in range(9):  # 10秒×9回＝最大90秒
+                res_list = requests.post(
+                    list_url,
+                    headers=headers_common,
+                    json={"size": 200, "current": 1},
+                    timeout=120,
+                )
+                if res_list.status_code != 200:
+                    print(f"⚠️ 注文一覧取得失敗 ({res_list.status_code}) リトライ中...")
+                    time.sleep(10)
+                    continue
+
                 data = res_list.json()
-                result = data.get("result", {})
-                records = result.get("records", [])
-                
-                # ✅ ここにログを追加
+                records = data.get("result", {}).get("records", [])
+                record_count = len(records)
+                print(f"⏳ 反映チェック {i+1}/9: {record_count}件")
+
+                if record_count == prev_count and record_count > 0:
+                    print("✅ 登録反映完了と判断")
+                    break
+
+                prev_count = record_count
+                time.sleep(10)
+
+            # 一括確認処理
+            if not records:
+                confirm_log = "⚠️ 一括確認対象なし（orderInfoが空）"
+            else:
                 print(f"🧾 一括確認前のorderInfo件数: {len(records)}")
 
                 order_ids = [r.get("id") for r in records if isinstance(r, dict)]
-                print(f"🆔 一括確認対象ID: {order_ids}")  # ✅ ここも追加
-                
+                print(f"🆔 一括確認対象ID: {order_ids}")
+
                 if not order_ids:
-                    confirm_log = "⚠️ 一括確認対象なし"
+                    confirm_log = "⚠️ 一括確認対象なし（ID抽出できず）"
                 else:
                     confirm_url = "http://8.209.213.176/api/back/orderManagement/orderInfo/batchConfirmation"
                     confirm_res = requests.post(
                         confirm_url,
-                        headers={
-                            "Authorization": access_token,
-                            "Accept": "application/json, text/plain, */*",
-                            "Content-Type": "application/json",
-                        },
+                        headers=headers_common,
                         json=order_ids,
                         timeout=120,
                     )
