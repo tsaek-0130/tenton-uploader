@@ -212,14 +212,26 @@ def main():
 
             # --- 一括確認フェーズ（改良版） ---
             print("🚀 一括確認フェーズ開始...")
-
+            
             list_url = "http://8.209.213.176/api/back/orderManagement/orderInfo"
             headers_common = {
                 "Authorization": access_token,
                 "Accept": "application/json, text/plain, */*",
                 "Content-Type": "application/json",
             }
-
+            
+            # ▼ アップロードファイルの行数から必要ページ数を算出
+            import math
+            try:
+                with open(FILE_PATH, "r", encoding="utf-8") as f:
+                    file_lines = f.readlines()
+                order_count = max(0, len(file_lines) - 1)  # 1行目ヘッダーを除外
+                pages_needed = math.ceil(order_count / 10) or 1
+                print(f"🧮 ファイル内注文数: {order_count}, 必要ページ数: {pages_needed}")
+            except Exception as e:
+                print(f"⚠️ ファイル件数取得失敗: {e}")
+                pages_needed = 1
+            
             prev_count = -1
             records = []
             for i in range(9):  # 10秒×9回＝最大90秒
@@ -233,29 +245,46 @@ def main():
                     print(f"⚠️ 注文一覧取得失敗 ({res_list.status_code}) リトライ中...")
                     time.sleep(10)
                     continue
-
+            
                 data = res_list.json()
                 print(json.dumps(data, ensure_ascii=False, indent=2))
                 records = data.get("result", {}).get("records", [])
                 record_count = len(records)
                 print(f"⏳ 反映チェック {i+1}/9: {record_count}件")
-
+            
                 if record_count == prev_count and record_count > 0:
                     print("✅ 登録反映完了と判断")
                     break
-
+            
                 prev_count = record_count
                 time.sleep(10)
-
-            # 一括確認処理
-            if not records:
+            
+            # --- ページング対応で全ページ分を取得 ---
+            all_records = []
+            for page_no in range(1, pages_needed + 1):
+                res_page = requests.post(
+                    list_url,
+                    headers=headers_common,
+                    json={"size": 200, "current": page_no},
+                    timeout=120,
+                )
+                if res_page.status_code != 200:
+                    print(f"⚠️ ページ{page_no}取得失敗: HTTP {res_page.status_code}")
+                    continue
+                data_page = res_page.json()
+                rec_page = data_page.get("result", {}).get("records", [])
+                all_records.extend(rec_page)
+                print(f"📄 ページ{page_no}/{pages_needed}: {len(rec_page)}件 取得")
+            
+            # --- 一括確認処理 ---
+            if not all_records:
                 confirm_log = "⚠️ 一括確認対象なし（orderInfoが空）"
             else:
-                print(f"🧾 一括確認前のorderInfo件数: {len(records)}")
-
-                order_ids = [r.get("id") for r in records if isinstance(r, dict)]
+                print(f"🧾 一括確認前のorderInfo件数: {len(all_records)}")
+            
+                order_ids = [r.get("id") for r in all_records if isinstance(r, dict)]
                 print(f"🆔 一括確認対象ID: {order_ids}")
-
+            
                 if not order_ids:
                     confirm_log = "⚠️ 一括確認対象なし（ID抽出できず）"
                 else:
@@ -267,6 +296,7 @@ def main():
                         timeout=120,
                     )
                     confirm_log = f"HTTP {confirm_res.status_code}\n{confirm_res.text[:500]}"
+
 
         except Exception as e:
             upload_log = upload_log or f"❌ 例外発生: {e}"
