@@ -276,22 +276,36 @@ def main():
                 prev_count = record_count
                 time.sleep(10)
             
-            # --- ページング対応で全ページ分を取得 ---
-            all_records = []
-            for page_no in range(1, pages_needed + 1):
-                res_page = requests.post(
-                    list_url,
-                    headers=headers_common,
-                    json={"size": 200, "current": page_no},
-                    timeout=120,
-                )
-                if res_page.status_code != 200:
-                    print(f"⚠️ ページ{page_no}取得失敗: HTTP {res_page.status_code}")
-                    continue
-                data_page = res_page.json()
-                rec_page = data_page.get("result", {}).get("records", [])
-                all_records.extend(rec_page)
-                print(f"📄 ページ{page_no}/{pages_needed}: {len(rec_page)}件 取得")
+                # --- ページング対応で全ページ分を取得 ---
+                all_records = []
+                page_no = 1
+                
+                while True:
+                    res_page = requests.post(
+                        list_url,
+                        headers=headers_common,
+                        json={"size": 10, "current": page_no},  # ← 10件ずつ確実に取る
+                        timeout=120,
+                    )
+                    if res_page.status_code != 200:
+                        print(f"⚠️ ページ{page_no}取得失敗: HTTP {res_page.status_code}")
+                        break
+                
+                    data_page = res_page.json()
+                    rec_page = data_page.get("result", {}).get("records", [])
+                    if not rec_page:
+                        print(f"📄 ページ{page_no}: 0件 → 取得完了")
+                        break
+                
+                    all_records.extend(rec_page)
+                    print(f"📄 ページ{page_no}: {len(rec_page)}件 取得")
+                
+                    # サーバーが10件固定仕様なので、10件未満なら最後のページ
+                    if len(rec_page) < 10:
+                        break
+                
+                    page_no += 1
+
             
             # --- 一括確認処理 ---
             if not all_records:
