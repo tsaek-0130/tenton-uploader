@@ -220,17 +220,34 @@ def main():
                 "Content-Type": "application/json",
             }
             
-            # ▼ アップロードファイルの行数から必要ページ数を算出
-            import math
+            # ▼ アップロードファイルの行数から必要ページ数を算出（文字コード自動判定＆詳細ログ付き）
+            import math, chardet  # ← chardetを追加（文字コード自動判定）
+            
             try:
-                with open(FILE_PATH, "r", encoding="utf-8") as f:
+                # --- ① ファイルの文字コードを自動判定 ---
+                with open(FILE_PATH, "rb") as fb:
+                    sample = fb.read()
+                    enc_guess = chardet.detect(sample)
+                    encoding = enc_guess.get("encoding") or "utf-8"
+                    confidence = enc_guess.get("confidence", 0)
+                print(f"🧩 文字コード推定: {encoding}（信頼度 {confidence:.2f}）")
+            
+                # --- ② 判定結果に基づいて安全に読み込み（decodeエラー無視） ---
+                with open(FILE_PATH, "r", encoding=encoding, errors="ignore") as f:
                     file_lines = f.readlines()
-                order_count = max(0, len(file_lines) - 1)  # 1行目ヘッダーを除外
+            
+                # --- ③ ヘッダー除外して件数計算 ---
+                order_count = max(0, len(file_lines) - 1)
                 pages_needed = math.ceil(order_count / 10) or 1
-                print(f"🧮 ファイル内注文数: {order_count}, 必要ページ数: {pages_needed}")
+            
+                # --- ④ 詳細ログ出力 ---
+                print(f"🧮 ファイル内注文数: {order_count} 件")
+                print(f"📄 1ページあたり10件 → 必要ページ数: {pages_needed}")
+            
             except Exception as e:
                 print(f"⚠️ ファイル件数取得失敗: {e}")
                 pages_needed = 1
+
             
             prev_count = -1
             records = []
