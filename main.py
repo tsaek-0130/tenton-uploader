@@ -284,7 +284,18 @@ def main():
                     res_page = requests.post(
                         list_url,
                         headers=headers_common,
-                        json={"size": 10, "current": page_no},  # ← 10件ずつ確実に取る
+                        json={
+                            "status": "1",  # ← これが抜けてた
+                            "current": page_no,
+                            "size": 200,
+                            "pageSize": 200,
+                            "importStrTime": None,
+                            "importEndTime": None,
+                            "strTime": None,
+                            "endTime": None,
+                            "sortType": "DESC",
+                            "sortName": "order_time"
+                        },
                         timeout=120,
                     )
                     if res_page.status_code != 200:
