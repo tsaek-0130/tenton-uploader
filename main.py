@@ -276,26 +276,29 @@ def main():
                 prev_count = record_count
                 time.sleep(10)
             
-                # --- ページング対応で全ページ分を取得 ---
+                # --- ページング対応で全ページ分を取得（APIパラメータ確定版） ---
                 all_records = []
                 page_no = 1
+                max_pages_safety = 1000  # runaway防止
                 
                 while True:
+                    payload = {
+                        "status": "1",            # ← 確認待ちのみ
+                        "current": page_no,       # ← ページ番号
+                        "size": 200,              # ← 表示件数（GUI互換のため下も指定）
+                        "pageSize": 200,
+                        "importStrTime": None,
+                        "importEndTime": None,
+                        "strTime": None,
+                        "endTime": None,
+                        "sortType": "DESC",
+                        "sortName": "order_time"
+                    }
+                
                     res_page = requests.post(
                         list_url,
                         headers=headers_common,
-                        json={
-                            "status": "1",  # ← これが抜けてた
-                            "current": page_no,
-                            "size": 200,
-                            "pageSize": 200,
-                            "importStrTime": None,
-                            "importEndTime": None,
-                            "strTime": None,
-                            "endTime": None,
-                            "sortType": "DESC",
-                            "sortName": "order_time"
-                        },
+                        json=payload,
                         timeout=120,
                     )
                     if res_page.status_code != 200:
@@ -303,19 +306,26 @@ def main():
                         break
                 
                     data_page = res_page.json()
-                    rec_page = data_page.get("result", {}).get("records", [])
-                    if not rec_page:
-                        print(f"📄 ページ{page_no}: 0件 → 取得完了")
-                        break
+                    result = data_page.get("result", {}) or {}
+                    rec_page = result.get("records", []) or []
+                    total_pages = result.get("pages") or 1  # サーバーが返す総ページ数（なければ1扱い）
                 
                     all_records.extend(rec_page)
-                    print(f"📄 ページ{page_no}: {len(rec_page)}件 取得")
+                    print(f"📄 ページ{page_no}/{total_pages}: {len(rec_page)}件 取得")
                 
-                    # サーバーが10件固定仕様なので、10件未満なら最後のページ
-                    if len(rec_page) < 10:
+                    # 終了条件（サーバーの総ページ数を優先。fallbackで0件 or 10件未満でも終了）
+                    if page_no >= total_pages:
+                        break
+                    if not rec_page:
+                        break
+                    if len(rec_page) < 10:  # サーバ側が10固定のケース向け保険
+                        break
+                    if page_no >= max_pages_safety:  # 暴走防止
+                        print("⚠️ safety stop: max_pages_safety 到達")
                         break
                 
                     page_no += 1
+
 
             
             # --- 一括確認処理 ---
