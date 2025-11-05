@@ -275,68 +275,61 @@ def main():
             
                 prev_count = record_count
                 time.sleep(10)
-            
-                # --- ページング対応で全ページ分を取得（APIパラメータ確定版） ---
-                all_records = []
-                page_no = 1
-                max_pages_safety = 1000  # runaway防止
-                
-                while True:
-                    payload = {
-                        "status": "1",            # ← 確認待ちのみ
-                        "current": page_no,       # ← ページ番号
-                        "size": 200,              # ← 表示件数（GUI互換のため下も指定）
-                        "pageSize": 200,
-                        "importStrTime": None,
-                        "importEndTime": None,
-                        "strTime": None,
-                        "endTime": None,
-                        "sortType": "DESC",
-                        "sortName": "order_time"
-                    }
-                
-                    res_page = requests.post(
-                        list_url,
-                        headers=headers_common,
-                        json=payload,
-                        timeout=120,
-                    )
-                    if res_page.status_code != 200:
-                        print(f"⚠️ ページ{page_no}取得失敗: HTTP {res_page.status_code}")
-                        break
-                
-                    data_page = res_page.json()
-                    result = data_page.get("result", {}) or {}
-                    rec_page = result.get("records", []) or []
-                    total_pages = result.get("pages") or 1  # サーバーが返す総ページ数（なければ1扱い）
-                
-                    all_records.extend(rec_page)
-                    print(f"📄 ページ{page_no}/{total_pages}: {len(rec_page)}件 取得")
-                
-                    # 終了条件（サーバーの総ページ数を優先。fallbackで0件 or 10件未満でも終了）
-                    if page_no >= total_pages:
-                        break
-                    if not rec_page:
-                        break
-                    if len(rec_page) < 10:  # サーバ側が10固定のケース向け保険
-                        break
-                    if page_no >= max_pages_safety:  # 暴走防止
-                        print("⚠️ safety stop: max_pages_safety 到達")
-                        break
-                
-                    page_no += 1
 
+            # --- ページング対応で全ページ分を取得（APIパラメータ確定版） ---
+            all_records = []
+            page_no = 1
+            max_pages_safety = 1000  # runaway防止
 
-            
+            while True:
+                payload = {
+                    "status": "1",
+                    "current": page_no,
+                    "size": 10,
+                    "pageSize": 10,
+                    "importStrTime": None,
+                    "importEndTime": None,
+                    "strTime": None,
+                    "endTime": None,
+                    "sortType": "DESC",
+                    "sortName": "i.order_no"
+                }
+
+                res_page = requests.post(
+                    list_url,
+                    headers=headers_common,
+                    json=payload,
+                    timeout=120,
+                )
+                if res_page.status_code != 200:
+                    print(f"⚠️ ページ{page_no}取得失敗: HTTP {res_page.status_code}")
+                    break
+
+                data_page = res_page.json()
+                result = data_page.get("result", {}) or {}
+                rec_page = result.get("records", []) or []
+                total_pages = result.get("pages") or 1
+
+                all_records.extend(rec_page)
+                print(f"📄 ページ{page_no}/{total_pages}: {len(rec_page)}件 取得")
+
+                if page_no >= total_pages or not rec_page or len(rec_page) < 10:
+                    break
+                if page_no >= max_pages_safety:
+                    print("⚠️ safety stop: max_pages_safety 到達")
+                    break
+
+                page_no += 1
+
             # --- 一括確認処理 ---
             if not all_records:
                 confirm_log = "⚠️ 一括確認対象なし（orderInfoが空）"
             else:
                 print(f"🧾 一括確認前のorderInfo件数: {len(all_records)}")
-            
-                order_ids = [r.get("id") for r in all_records if isinstance(r, dict)]
+
+                order_ids = list({r.get("id") for r in all_records if isinstance(r, dict) and str(r.get("status")) == "1"})
                 print(f"🆔 一括確認対象ID: {order_ids}")
-            
+
                 if not order_ids:
                     confirm_log = "⚠️ 一括確認対象なし（ID抽出できず）"
                 else:
@@ -348,7 +341,6 @@ def main():
                         timeout=120,
                     )
                     confirm_log = f"HTTP {confirm_res.status_code}\n{confirm_res.text[:500]}"
-
 
         except Exception as e:
             upload_log = upload_log or f"❌ 例外発生: {e}"
