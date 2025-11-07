@@ -280,7 +280,7 @@ def main():
             all_records = []
             page_no = 1
             max_pages_safety = 1000  # runaway防止
-
+            
             while True:
                 payload = {
                     "status": "1",
@@ -292,9 +292,9 @@ def main():
                     "strTime": None,
                     "endTime": None,
                     "sortType": "DESC",
-                    "sortName": "order_time"  # ← 修正：i.order_no ではなく order_time に統一
+                    "sortName": "order_time"
                 }
-
+            
                 res_page = requests.post(
                     list_url,
                     headers=headers_common,
@@ -304,23 +304,32 @@ def main():
                 if res_page.status_code != 200:
                     print(f"⚠️ ページ{page_no}取得失敗: HTTP {res_page.status_code}")
                     break
-
+            
                 data_page = res_page.json()
                 result = data_page.get("result", {}) or {}
                 rec_page = result.get("records", []) or []
-                total_pages = result.get("pages") or 1
-
-                all_records.extend(rec_page)
+                total_pages = int(result.get("pages") or 1)
+            
                 print(f"📄 ページ{page_no}/{total_pages}: {len(rec_page)}件 取得")
-
-                # ← 修正：total_pages を信頼し、len(rec_page) < 10 では終了しない
-                if page_no >= total_pages or not rec_page:
+                all_records.extend(rec_page)
+            
+                # ✅ 修正①: break条件を明示的に整理
+                if not rec_page:
+                    print(f"⚠️ ページ{page_no}で0件 → 打ち切り")
                     break
+            
+                # ✅ 修正②: 総ページ数に到達するまで必ず継続
+                if page_no >= total_pages:
+                    print("✅ 全ページ取得完了")
+                    break
+            
+                # ✅ 修正③: 安全ストッパー
                 if page_no >= max_pages_safety:
                     print("⚠️ safety stop: max_pages_safety 到達")
                     break
-
+            
                 page_no += 1
+
 
             # --- 一括確認処理 ---
             if not all_records:
