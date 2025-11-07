@@ -292,7 +292,7 @@ def main():
                     "strTime": None,
                     "endTime": None,
                     "sortType": "DESC",
-                    "sortName": "i.order_no"
+                    "sortName": "order_time"  # ← 修正：i.order_no ではなく order_time に統一
                 }
 
                 res_page = requests.post(
@@ -313,7 +313,8 @@ def main():
                 all_records.extend(rec_page)
                 print(f"📄 ページ{page_no}/{total_pages}: {len(rec_page)}件 取得")
 
-                if page_no >= total_pages or not rec_page or len(rec_page) < 10:
+                # ← 修正：total_pages を信頼し、len(rec_page) < 10 では終了しない
+                if page_no >= total_pages or not rec_page:
                     break
                 if page_no >= max_pages_safety:
                     print("⚠️ safety stop: max_pages_safety 到達")
