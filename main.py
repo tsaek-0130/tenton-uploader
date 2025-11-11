@@ -330,14 +330,20 @@ def main():
             
                 page_no += 1
 
-
+            time.sleep(10)  # API反映安定待機
             # --- 一括確認処理 ---
             if not all_records:
                 confirm_log = "⚠️ 一括確認対象なし（orderInfoが空）"
             else:
                 print(f"🧾 一括確認前のorderInfo件数: {len(all_records)}")
 
-                order_ids = list({r.get("id") for r in all_records if isinstance(r, dict) and str(r.get("status")) == "1"})
+                # 修正後
+                order_ids = list({
+                    r.get("id")
+                    for r in all_records
+                    if isinstance(r, dict)
+                    and str(r.get("status")) in ("0", "1", "2")  # ← 追加
+                })
                 print(f"🆔 一括確認対象ID: {order_ids}")
 
                 if not order_ids:
