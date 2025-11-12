@@ -280,8 +280,11 @@ def main():
             all_records = []
             page_no = 1
             max_pages_safety = 1000  # runaway防止
-            
+
             while True:
+                # ✅ ページ番号に応じて sortName を切り替える
+                sort_name = "order_time" if page_no == 1 else "i.order_no"
+
                 payload = {
                     "status": "1",
                     "current": page_no,
@@ -292,9 +295,9 @@ def main():
                     "strTime": None,
                     "endTime": None,
                     "sortType": "DESC",
-                    "sortName": "order_time"
+                    "sortName": sort_name  # ← ページ2以降では i.order_no に切り替え
                 }
-            
+
                 res_page = requests.post(
                     list_url,
                     headers=headers_common,
@@ -304,31 +307,25 @@ def main():
                 if res_page.status_code != 200:
                     print(f"⚠️ ページ{page_no}取得失敗: HTTP {res_page.status_code}")
                     break
-            
+
                 data_page = res_page.json()
                 result = data_page.get("result", {}) or {}
                 rec_page = result.get("records", []) or []
-                total_pages = int(result.get("pages") or 1)
-            
-                print(f"📄 ページ{page_no}/{total_pages}: {len(rec_page)}件 取得")
+                total_pages = result.get("pages") or 1
+
                 all_records.extend(rec_page)
-            
-                # ✅ 修正①: break条件を明示的に整理
-                if not rec_page:
-                    print(f"⚠️ ページ{page_no}で0件 → 打ち切り")
-                    break
-            
-                # ✅ 修正②: 総ページ数に到達するまで必ず継続
-                if page_no >= total_pages:
+                print(f"📄 ページ{page_no}/{total_pages}: {len(rec_page)}件 取得（sort={sort_name}）")
+
+                # 終了条件
+                if page_no >= total_pages or not rec_page or len(rec_page) < 10:
                     print("✅ 全ページ取得完了")
                     break
-            
-                # ✅ 修正③: 安全ストッパー
                 if page_no >= max_pages_safety:
                     print("⚠️ safety stop: max_pages_safety 到達")
                     break
-            
+
                 page_no += 1
+
 
             time.sleep(10)  # API反映安定待機
             # --- 一括確認処理 ---
