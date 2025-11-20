@@ -295,15 +295,24 @@ def main():
                     "strTime": None,
                     "endTime": None,
                     "sortType": "DESC",
-                    "sortName": sort_name  # ← ページ2以降では i.order_no に切り替え
+                    "sortName": sort_name
                 }
 
-                res_page = requests.post(
-                    list_url,
-                    headers=headers_common,
-                    json=payload,
-                    timeout=120,
-                )
+                # =====================================================
+                # ★ 修正部分（ページングAPIの通信例外を補足）
+                # =====================================================
+                try:
+                    res_page = requests.post(
+                        list_url,
+                        headers=headers_common,
+                        json=payload,
+                        timeout=120,
+                    )
+                except Exception as e:
+                    print(f"🔥 ページ{page_no} 通信エラー: {e}")
+                    break
+                # =====================================================
+
                 if res_page.status_code != 200:
                     print(f"⚠️ ページ{page_no}取得失敗: HTTP {res_page.status_code}")
                     break
@@ -325,6 +334,9 @@ def main():
                     break
 
                 page_no += 1
+
+            # ---（この先も一切変更なし）---
+
 
 
             time.sleep(10)  # API反映安定待機
