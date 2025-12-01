@@ -283,7 +283,7 @@ def main():
 
             while True:
                 # ✅ ページ番号に応じて sortName を切り替える
-                sort_name = "order_time" if page_no == 1 else "i.order_no"
+                sort_name = "order_time"
 
                 payload = {
                     "status": "1",
