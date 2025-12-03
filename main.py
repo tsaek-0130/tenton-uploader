@@ -157,6 +157,12 @@ def login_and_save_state(browser, username, password):
 
 # --- メイン ---
 def main():
+
+    # ▼ GitHub Actions 対策：壊れた state.json を毎回削除
+    if os.path.exists(STATE_FILE):
+        print("⚠️ GitHub: 壊れた state.json を削除")
+        os.remove(STATE_FILE)
+
     FILE_PATH, FILE_NAME = download_latest_file()
 
     base_name = FILE_NAME.replace(".txt", "").replace("Downloaded: ", "")
@@ -168,6 +174,7 @@ def main():
 
     USERNAME = os.environ["TENTON_USER"]
     PASSWORD = os.environ["TENTON_PASS"]
+
 
     upload_log = ""
     confirm_log = ""
