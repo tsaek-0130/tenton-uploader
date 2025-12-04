@@ -145,12 +145,14 @@ def login_and_save_state(browser, username, password):
     page.fill("#password", password)
     page.click("button.login-button")
 
-    page.wait_for_load_state("networkidle", timeout=180000)
+    # ★ これだけにする（1行のみ）
+    page.wait_for_load_state("networkidle")
 
     context.storage_state(path=STATE_FILE)
     context.close()
 
     print("💾 state.json 保存完了")
+
 
 
 # --- メイン ---
@@ -337,8 +339,10 @@ def main():
                     confirm_log = f"HTTP {confirm_res.status_code}\n{confirm_res.text[:500]}"
 
         except Exception as e:
-            upload_log = upload_log or f"例外発生: {e}"
-            confirm_log = confirm_log or "未実施（例外）"
+            print("🔥 FATAL ERROR:", e)  # ←これ追加
+            upload_log = f"例外発生: {e}"
+            confirm_log = "未実施（例外）"
+
 
         finally:
             browser.close()
