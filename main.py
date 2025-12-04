@@ -6,8 +6,6 @@ import time
 from datetime import datetime, timedelta, timezone
 from playwright.sync_api import sync_playwright
 from googletrans import Translator
-import math
-import chardet
 
 DROPBOX_PATH = "/tenton"
 STATE_FILE = "state.json"
@@ -20,7 +18,7 @@ def translate_to_japanese(text):
     if not text:
         return text
     try:
-        result = translator.translate(text, src='zh-cn', dest='ja')
+        result = translator.translate(text, src="zh-cn", dest="ja")
         return result.text
     except Exception as e:
         return f"[翻訳失敗: {e}] 原文: {text}"
@@ -43,7 +41,7 @@ def summarize_orders(raw_text):
         lines = []
         for msg, orders in grouped.items():
             order_list = ", ".join(orders[:10])
-            more = f" …他{len(orders)-10}件" if len(orders) > 10 else ""
+            more = f" …他{len(orders) - 10}件" if len(orders) > 10 else ""
             lines.append(f"{msg}：{order_list}{more}")
         return "\n".join(lines)
     except Exception:
@@ -61,7 +59,7 @@ def notify_chatwork(report_time, upload_log, confirm_log):
         print("⚠️ Chatwork通知スキップ（環境変数未設定）")
         return
 
-    now_jst = datetime.now(JST).strftime('%Y-%m-%d %H:%M:%S')
+    now_jst = datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S")
 
     upload_status = "✅ 成功" if "HTTP 200" in upload_log else "❌ 失敗"
     confirm_status = "✅ 成功" if "HTTP 200" in confirm_log else "❌ 失敗"
@@ -169,12 +167,11 @@ def main():
     try:
         utc_dt = datetime.strptime(base_name, "%Y-%m-%d %H:%M:%S")
         report_time = (utc_dt + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M:%S")
-    except:
+    except Exception:
         report_time = base_name
 
     USERNAME = os.environ["TENTON_USER"]
     PASSWORD = os.environ["TENTON_PASS"]
-
 
     upload_log = ""
     confirm_log = ""
@@ -200,7 +197,7 @@ def main():
                 items = page.query_selector_all("li[role='menuitem']")
                 if len(items) >= 2:
                     items[1].click()
-            except:
+            except Exception:
                 pass
 
             # --- Access Token 取得 ---
@@ -218,7 +215,7 @@ def main():
             }
             data = {
                 "type": "1",
-                "shopId": "6a7aaaf6342c40879974a8e9138e3b3b"
+                "shopId": "6a7aaaf6342c40879974a8e9138e3b3b",
             }
 
             with open(FILE_PATH, "rb") as f:
@@ -269,8 +266,8 @@ def main():
 
             while True:
                 payload = {
-                    "status": "1",
-                    "current": page_no,
+                    "status": "1",          # string で OK（UI と同じ）
+                    "current": page_no,     # int で OK
                     "size": 200,
                     "pageSize": 200,
                     "importStrTime": None,
@@ -278,7 +275,7 @@ def main():
                     "strTime": None,
                     "endTime": None,
                     "sortType": "DESC",
-                    "sortName": "i.order_no"
+                    "sortName": "i.order_no",
                 }
 
                 try:
@@ -318,12 +315,14 @@ def main():
             if not all_records:
                 confirm_log = "対象なし"
             else:
-                order_ids = list({
-                    r.get("id")
-                    for r in all_records
-                    if isinstance(r, dict)
-                    and str(r.get("status")) == "1"
-                })
+                order_ids = list(
+                    {
+                        r.get("id")
+                        for r in all_records
+                        if isinstance(r, dict)
+                        and str(r.get("status")) == "1"
+                    }
+                )
 
                 if not order_ids:
                     confirm_log = "IDなし"
